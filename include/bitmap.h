@@ -9,21 +9,16 @@
 class Bitmap
 {
 public:
-    double *z_buffer;
     inline virtual ~Bitmap()
     {
         if (_bits)
             delete[] _bits;
         _bits = NULL;
-        if (z_buffer)
-            delete[] z_buffer;
-        z_buffer = NULL;
     }
     inline Bitmap(int width, int height) : _w(width), _h(height)
     {
         _pitch = width * 4;
         _bits = new uint8_t[_pitch * _h];
-        z_buffer = new double[_w * _h];
         Fill(0);
     }
 
@@ -68,10 +63,6 @@ public:
             for (int i = 0; i < _w; i++, row++)
                 memcpy(row, &color, sizeof(uint32_t));
         }
-        for (int j = 0; j < _w * _h; j++)
-        {
-            z_buffer[j] = 1e300;
-        }
     }
 
     inline void SetPixel(int x, int y, uint32_t color)
@@ -81,15 +72,7 @@ public:
             memcpy(_bits + y * _pitch + x * 4, &color, sizeof(uint32_t));
         }
     }
-    inline void SetPixel(int x, int y, double z, uint32_t color)
-    {
-        int idx = y * _w + x;
-        if (x >= 0 && x < _w && y >= 0 && y < _h && z > 0 && z < z_buffer[idx])
-        {
-            z_buffer[idx] = z;
-            memcpy(_bits + idx * 4, &color, sizeof(uint32_t));
-        }
-    }
+
 
     inline uint32_t GetPixel(int x, int y) const
     {

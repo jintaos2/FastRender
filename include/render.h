@@ -44,11 +44,18 @@ public:
     inline void set_pixel(int x, int y, float z, uint32_t color)
     {
         int idx = y * w_ + x;
-        if (x >= 0 && x < w_ && y >= 0 && y < h_ && z < z_buffer[idx])
+        // #pragma omp critical
         {
-            z_buffer[idx] = z;
-            fb_[idx] = color;
+            if (z < z_buffer[idx])
+            {
+                z_buffer[idx] = z;
+                fb_[idx] = color;
+            }
         }
+    }
+    inline bool visiable(int x, int y, float z)
+    {
+        return z < z_buffer[y * w_ + x];
     }
 };
 
@@ -78,7 +85,6 @@ public:
 class RenderObj
 {
 public:
-    Bitmap *frame_buffer;
     FrameBuffer *frame_buffer_;
     Mat4x4f *camera;
     float *camera_scale;
@@ -93,16 +99,77 @@ public:
     std::vector<Vec3f> norms_;               // transformed
     std::vector<Vector<3, Vertex2D>> faces_; // clipped
 
+    struct _Face
+    {
+        float coff11, coff12, coff21, coff22, x3, y3;
+        float z1, z2, z3;
+        Vec3f norm1, norm2, norm3;
+        Vec2f uv1, uv2, uv3;
+    };
+    // |slope| < 1
+    // input: (x0,y0) ,(x1,y1) and x1 <= x2, slope <= 1
+    // output: step through x, output y
+    struct Bresenham
+    {
+        int dx;
+        int dy;
+        int D;
+        int y_step = 1;
+        int y, ret = 0;
+        bool flip = 1;
+        Bresenham(int x0, int y0, int x1, int y1)
+        {
+            dx = x1 - x0;
+            dy = y1 - y0;
+            if (dy < 0)
+            {
+                y_step = -1; // if k < 0, only change the y direction
+                dy = -dy;    // dy = abs(dy)
+            }
+            if (dx >= dy) // |k| < 1, not flip
+                flip = 0;
+            else
+                std::swap(dx, dy);
+            D = -dx;
+            y = y0; // initial value of y
+        }
+        inline int step()
+        {
+            ret = y;
+            if (flip)
+            {
+                while (1)
+                {
+                    y = y + y_step;
+                    D = D + 2 * dy;
+                    if (D > 0)
+                    {
+                        D = D - 2 * dx;
+                        return ret;
+                    }
+                }
+            }
+            else
+            {
+                D = D + 2 * dy;
+                if (D > 0)
+                {
+                    y = y + y_step;
+                    D = D - 2 * dx;
+                }
+                return ret;
+            }
+        }
+    };
+
     RenderObj(Render *render, Obj *obj);
+
     void render()
     {
-        Mat4x4f transform = transformm_invert(*camera) * (*obj_coordinate); // 转换到相机空间
-        rotate_ = transformm_rotate(transform) * (*obj_scale);              // 提取旋转矩阵
-        move_ = transformm_move(transform);                                 // 提取位移
+        Mat4x4f transform = transformm_invert(*camera) * (*obj_coordinate); // 转换到相机空间.
+        rotate_ = transformm_rotate(transform) * (*obj_scale);              // 提取旋转矩阵.
+        move_ = transformm_move(transform);                                 // 提取位移.
 
-        // std::cout << "rotate_mm:\n"
-        //           << rotate_ << "move_vec:\n"
-        //           << move_ << std::endl;
         int mx = frame_buffer_->w_ / 2;
         int my = frame_buffer_->h_ / 2;
         float fx = frame_buffer_->w_ + 0.5;
@@ -111,24 +178,22 @@ public:
 #pragma omp parallel for
         for (int i = 0; i < vertex_.size(); ++i)
         {
-            Vec3f v = rotate_ * (model->_verts[i]) + move_;                 // 顶点坐标转换
+            Vec3f v = rotate_ * (model->_verts[i]) + move_;                 // 顶点坐标转换.
             float z = v.z / (*camera_scale);                                //
-            Vertex2D vertex = {v.x / z + mx, v.y / z + my, z, false, 0, 0}; // 透视投影
+            Vertex2D vertex = {v.x / z + mx, v.y / z + my, z, false, 0, 0}; // 透视投影.
             if (vertex.z < 0.001 || vertex.x < -0.5 || vertex.y < -0.5 || vertex.x > fx || vertex.y > fy)
                 vertex._out = true;
             vertex_[i] = vertex;
-            // std::cout << "vertex " << i << " after transfer\n"
-            //           << vertex_[i] << std::endl;
         }
 #pragma omp parallel for
         for (int i = 0; i < norms_.size(); ++i)
         {
-            norms_[i] = rotate_ * (model->_norms[i]); // 顶点法向量转换
+            norms_[i] = rotate_ * (model->_norms[i]); // 顶点法向量转换.
             // std::cout << "norm " << i << " after transfer\n"
             //           << norms_[i] << std::endl;
         }
         clip_faces();
-#pragma omp parallel for
+        // #pragma omp parallel for
         for (int i = 0; i < faces_.size(); ++i)
         {
             Draw_triangle(faces_[i]);
@@ -137,13 +202,11 @@ public:
     void clip_faces()
     {
         faces_.clear();
-        int mx = frame_buffer->_w / 2;
-        int my = frame_buffer->_h / 2;
 
         // #pragma omp parallel for
         for (int i = 0; i < model->_faces.size(); ++i)
         {
-            Vec3i p1 = model->_faces[i][0]; // 顶点索引 / 纹理坐标索引 / 顶点法向量索引
+            Vec3i p1 = model->_faces[i][0]; // 顶点索引 / 纹理坐标索引 / 顶点法向量索引.
             Vec3i p2 = model->_faces[i][1];
             Vec3i p3 = model->_faces[i][2];
             Vertex2D v1 = vertex_[p1.x];
@@ -171,75 +234,10 @@ public:
             }
         }
     }
-    // |slope| < 1
-    // input: (x0,y0) ,(x1,y1) and x1 <= x2, slope <= 1
-    // output: step through x, output y
-    struct Bresenham
-    {
-        int dx;
-        int dy;
-        int y1_;
-        int D;
-        int y_step = 1;
-        int y, ret = 0;
-        bool flip = 1;
-        Bresenham(int x0, int y0, int x1, int y1)
-        {
-            dx = x1 - x0;
-            dy = y1 - y0;
-            y1_ = y1;
-            if (dy < 0)
-            {
-                y_step = -1; // if k < 0, only change the y direction
-                dy = -dy;    // dy = abs(dy)
-            }
-            if (dx >= dy)
-                flip = 0;
-            else
-                std::swap(dx, dy);
-            D = -dx;
-            y = y0;
-        }
-        inline int step(bool UP)
-        {
-            ret = y;
-            if (flip)
-            {
-                while (1)
-                {
-                    y = y + y_step;
-                    D = D + 2 * dy;
-                    if (D > 0 || y == y1_ + y_step)
-                    {
-                        D = D - 2 * dx;
-                        break;
-                    }
-                }
-                return UP ? ret : y - y_step;
-            }
-            else
-            {
-                D = D + 2 * dy;
-                if (D > 0)
-                {
-                    y = y + y_step;
-                    D = D - 2 * dx;
-                }
-                return ret;
-            }
-        }
-    };
-    struct _Face
-    {
-        float coff11, coff12, coff21, coff22, x3, y3;
-        float z1, z2, z3;
-        Vec3f norm1, norm2, norm3;
-        Vec2f uv1, uv2, uv3;
-    };
-    void Draw_triangle(Vector<3, Vertex2D> &face)
+
+    inline void Draw_triangle(Vector<3, Vertex2D> &face)
     {
         _Face f;
-
         // std::cout << "-------------------Draw_triangle----------------------: \n"
         //           << face.x << "\n"
         //           << face.y << "\n"
@@ -259,6 +257,7 @@ public:
         int y1 = round(y1f);
         int y2 = round(y2f);
         int y3 = round(y3f);
+        // std::cout << "x1 x2 x3:" << x1 << "  " << x2 << "  " << x3 << std::endl;
 
         float coff3 = (y2f - y3f) * (x1f - x3f) + (x3f - x2f) * (y1f - y3f);
         f.coff11 = (y2f - y3f) / coff3;
@@ -277,63 +276,62 @@ public:
         f.norm2 = model->_norms[face.y.norm];
         f.norm3 = model->_norms[face.z.norm];
 
-        int c = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1); // up, down, line
-        if (c != 0)
-        { // not a line
-            Bresenham l1(x1, y1, x3, y3);
-            Bresenham l2(x1, y1, x2, y2);
-            Bresenham l3(x2, y2, x3, y3);
-            // std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
-            if (x2 > x1)
+        //int c = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1); // up, down, line
+        if (x3 - x1 > 1)
+        {
+            float c = y2 - y1 - 1.0f * (y3 - y1) / (x3 - x1) * (x2 - x1);
+            if (c < -1.4 || c > 1.4)
             {
+                Bresenham l1(x1, y1, x3, y3);
+                Bresenham l2(x1, y1, x2, y2);
+                Bresenham l3(x2, y2, x3, y3);
+                // std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
                 for (int i = x1; i < x2; ++i)
                 {
                     // std::cout << "scanline: " << i << std::endl;
-                    Draw_scanline(i, l1.step(c < 0), l2.step(c > 0), &f);
+                    Draw_scanline(i, l1.step(), l2.step(), &f);
                 }
-            }
-            if (x3 > x2)
-            {
                 for (int i = x2; i < x3; ++i)
                 {
                     // std::cout << "scanline: " << i << std::endl;
-                    Draw_scanline(i, l1.step(c < 0), l3.step(c > 0), &f);
+                    Draw_scanline(i, l1.step(), l3.step(), &f);
                 }
             }
         }
         Draw_line(x1, y1, x2, y2, &f);
         Draw_line(x1, y1, x3, y3, &f);
         Draw_line(x2, y2, x3, y3, &f);
-        //Draw_scanline(x3, l1.step(c > 0), l3.step(c < 0), &f);
     }
     inline void Draw_scanline(int x, int y1, int y2, _Face *f)
     {
+        if (x < 0 || x >= frame_buffer_->w_)
+            return;
         if (y1 > y2)
             std::swap(y1, y2);
-        int dy = y2 - y1;
         for (int y = y1; y <= y2; ++y)
         {
             // double frac1 = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) * 1.0 / ((y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3));
             // double frac2 = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) * 1.0 / ((y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3));
             // double frac3 = 1 - frac1 - frac2;
-            //std::cout << "draw_pixel x=" << x << "\t y=" << y << std::endl;
+            if (y < 0 || y >= frame_buffer_->h_)
+                continue;
 
             float frac1 = f->coff11 * (x - f->x3) + f->coff12 * (y - f->y3);
             float frac2 = f->coff21 * (x - f->x3) + f->coff22 * (y - f->y3);
             float frac3 = 1 - frac1 - frac2;
-            // if (frac1 >= 0 && frac2 >= 0 && frac3 >= 0)
-            {
-                frac1 /= f->z1;
-                frac2 /= f->z2;
-                frac3 /= f->z3;
-                float z_ = 1.0 / (frac1 + frac2 + frac3);
-                Vec2f uv_pixel = (frac1 * f->uv1 + frac2 * f->uv2 + frac3 * f->uv3) * z_;
-                uint32_t argb = model->diffuse(uv_pixel);
-                argb = ((argb & 0x000000ff) << 16) | ((argb & 0x00ff0000) >> 16) | ((argb & 0xff00ff00));
-                frame_buffer_->set_pixel(x, y, z_, argb);
-            }
-            // double z_ = 1.0 / (frac1 / f->z1 + frac2 / f->z2 + frac3 / f->z3);
-            // Vec2f uv_pixel = ((float)frac1 * f->uv1 / f->z1 + (float)frac2 * f->uv2 / f->z2 + (float)frac3 * f->uv3 / f->z3) * (float)z_;
+            frac1 /= f->z1;
+            frac2 /= f->z2;
+            frac3 /= f->z3;
+            float z_ = 1.0f / (frac1 + frac2 + frac3);
+
+            if (!frame_buffer_->visiable(x, y, z_))
+                continue;
+
+            Vec2f uv_pixel = (frac1 * f->uv1 + frac2 * f->uv2 + frac3 * f->uv3) * z_;
+            uint32_t argb = model->diffuse(uv_pixel);
+            argb = ((argb & 0x000000ff) << 16) | ((argb & 0x00ff0000) >> 16) | ((argb & 0xff00ff00));
+            frame_buffer_->set_pixel(x, y, z_, argb);
+
             // std::cout << "fracs: " << frac1 << "  " << frac2 << "  " << frac3 << std::endl
             // std::cout << "uv_coord " << uv_pixel << " x:" << x << " y:" << y << std::endl;
             //printf("deepth z_ =%12.10f %12.10f %12.10f | %12.10f\n",p1->z, p2->z, p3->z,z_);
@@ -349,11 +347,7 @@ public:
             std::swap(x1, y1);
             flip = true;
         }
-        if (x0 > x1)
-        { //  if x0 > x1, swap the start and end
-            std::swap(x0, x1);
-            std::swap(y0, y1);
-        }
+
         int dx = x1 - x0;
         int dy = y1 - y0;
         int D = -dx; // error
@@ -383,7 +377,6 @@ public:
 class Render
 {
 public:
-    Bitmap *frame_buffer;
     FrameBuffer fb;
     Mat4x4f camera = matrix_set_identity();
     float camera_scale = 1;
@@ -446,7 +439,6 @@ public:
 
 RenderObj::RenderObj(Render *render, Obj *obj)
 {
-    frame_buffer = render->frame_buffer;
     frame_buffer_ = &(render->fb);
     camera = &(render->camera);
     camera_scale = &(render->camera_scale);
