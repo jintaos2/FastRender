@@ -2,27 +2,29 @@
 #include "include/render.h"
 
 
-#define SCR_WIDTH 1920
-#define SCR_HEIGHT 1080
+#define SCR_WIDTH 3000
+#define SCR_HEIGHT 2000
 #define ZOOM 1
 
 
 int main()
 {
 
-    Bitmap frame_buffer_(SCR_WIDTH, SCR_HEIGHT);
-    Render r(frame_buffer_);
+    Render r(SCR_WIDTH, SCR_HEIGHT);
     r.set_camera({{1, 0, 0, 0},
                   {0, 1, 0, 0},
-                  {0, 0, 1, -3.0},
+                  {0, 0, 1, -6.0},
                   {0, 0, 0, 1}},
-                 600.0);
+                 1600.0);
 
     Model model("res/diablo3_pose.obj");
-    Mat4x4f pose = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
-    Obj test(&model, pose, 2);
+    Mat4x4f pose1 = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
+    Mat4x4f pose2 = { {1, 0, 0, 1}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1} };
+    Obj test1(&model, pose1, 2);
+    Obj test2(&model, pose2, 1);
 
-    r.add_obj(test);
+    r.add_obj(test1);
+    r.add_obj(test2);
     // r.render();
 
     // r.Draw_triangle3D(aa, bb, cc, camera_dir, camera_pos);
@@ -59,12 +61,13 @@ int main()
         else if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
             r.rotate_camera_left(0.1);
 
-        frame_buffer_.Fill(0xffffffff);
-        // test.coordinate = test.coordinate * matrix_set_rotate(0, 1, 0, 0.05);
+        r.fb.fill(0xffffffff);
+        test1.coordinate = test1.coordinate * matrix_set_rotate(0, 1, 0, 0.05);
+        test2.coordinate = test2.coordinate * matrix_set_rotate(0, 1, 0, -0.05);
         r.render();
         // std::cout << "===============================new frame ==========================\n";
         glPixelZoom(ZOOM, ZOOM);
-        glDrawPixels(SCR_WIDTH, SCR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, frame_buffer_.GetBits());
+        glDrawPixels(SCR_WIDTH, SCR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, r.fb.fb_);
         glfwSwapBuffers(window);
         glfwPollEvents();
     }

@@ -8,20 +8,56 @@
 
 class Render;
 
-inline static Vec3d interp(Vec3f v1, Vec3f v2, double frac)
+class FrameBuffer
 {
-    Vec3d ret;
-    ret.x = v1.x * frac + (1 - frac) * v2.x;
-    ret.y = v1.y * frac + (1 - frac) * v2.y;
-    ret.z = v1.z * frac + (1 - frac) * v2.z;
-    return ret;
-}
+public:
+    uint32_t *fb_;
+    int w_, h_;
+    int size;
+    float *z_buffer;
+    FrameBuffer(int w, int h) : w_(w), h_(h), size(w * h)
+    {
+        fb_ = new uint32_t[size];
+        z_buffer = new float[size];
+    }
+    ~FrameBuffer()
+    {
+        if (fb_)
+        {
+            delete[] fb_;
+            fb_ = NULL;
+        }
+        if (z_buffer)
+        {
+            delete[] z_buffer;
+            z_buffer = NULL;
+        }
+    }
+    inline void fill(uint32_t color)
+    {
+        for (int i = 0; i < size; ++i)
+        {
+            fb_[i] = color;
+            z_buffer[i] = FLT_MAX;
+        }
+    }
+    inline void set_pixel(int x, int y, float z, uint32_t color)
+    {
+        int idx = y * w_ + x;
+        if (x >= 0 && x < w_ && y >= 0 && y < h_ && z < z_buffer[idx])
+        {
+            z_buffer[idx] = z;
+            fb_[idx] = color;
+        }
+    }
+};
 
 struct Vertex2D
 {
     float x;
     float y;
     float z;
+    bool _out;
     int uv;
     int norm;
 };
@@ -43,6 +79,7 @@ class RenderObj
 {
 public:
     Bitmap *frame_buffer;
+    FrameBuffer *frame_buffer_;
     Mat4x4f *camera;
     float *camera_scale;
 
@@ -52,7 +89,7 @@ public:
 
     Mat3x3f rotate_;
     Vec3f move_;
-    std::vector<Vec3f> vertex_;              // transformed
+    std::vector<Vertex2D> vertex_;           // transformed
     std::vector<Vec3f> norms_;               // transformed
     std::vector<Vector<3, Vertex2D>> faces_; // clipped
 
@@ -60,21 +97,30 @@ public:
     void render()
     {
         Mat4x4f transform = transformm_invert(*camera) * (*obj_coordinate); // 转换到相机空间
-        rotate_ = transformm_rotate(transform);                             // 提取旋转矩阵
+        rotate_ = transformm_rotate(transform) * (*obj_scale);              // 提取旋转矩阵
         move_ = transformm_move(transform);                                 // 提取位移
 
         // std::cout << "rotate_mm:\n"
         //           << rotate_ << "move_vec:\n"
         //           << move_ << std::endl;
+        int mx = frame_buffer_->w_ / 2;
+        int my = frame_buffer_->h_ / 2;
+        float fx = frame_buffer_->w_ + 0.5;
+        float fy = frame_buffer_->h_ + 0.5;
 
-// #pragma omp parallel for
+#pragma omp parallel for
         for (int i = 0; i < vertex_.size(); ++i)
         {
-            vertex_[i] = rotate_ * (model->_verts[i]) * (*obj_scale) + move_; // 顶点坐标转换
+            Vec3f v = rotate_ * (model->_verts[i]) + move_;                 // 顶点坐标转换
+            float z = v.z / (*camera_scale);                                //
+            Vertex2D vertex = {v.x / z + mx, v.y / z + my, z, false, 0, 0}; // 透视投影
+            if (vertex.z < 0.001 || vertex.x < -0.5 || vertex.y < -0.5 || vertex.x > fx || vertex.y > fy)
+                vertex._out = true;
+            vertex_[i] = vertex;
             // std::cout << "vertex " << i << " after transfer\n"
             //           << vertex_[i] << std::endl;
         }
-// #pragma omp parallel for
+#pragma omp parallel for
         for (int i = 0; i < norms_.size(); ++i)
         {
             norms_[i] = rotate_ * (model->_norms[i]); // 顶点法向量转换
@@ -83,7 +129,7 @@ public:
         }
         clip_faces();
 #pragma omp parallel for
-        for (int i = 0; i < faces_.size();++i)
+        for (int i = 0; i < faces_.size(); ++i)
         {
             Draw_triangle(faces_[i]);
         }
@@ -94,34 +140,34 @@ public:
         int mx = frame_buffer->_w / 2;
         int my = frame_buffer->_h / 2;
 
-// #pragma omp parallel for
+        // #pragma omp parallel for
         for (int i = 0; i < model->_faces.size(); ++i)
         {
             Vec3i p1 = model->_faces[i][0]; // 顶点索引 / 纹理坐标索引 / 顶点法向量索引
             Vec3i p2 = model->_faces[i][1];
             Vec3i p3 = model->_faces[i][2];
-            Vec3f v1 = vertex_[p1.x];
-            Vec3f v2 = vertex_[p2.x];
-            Vec3f v3 = vertex_[p3.x];
-            if (v1.z > 0 && v2.z > 0 && v3.z > 0)
+            Vertex2D v1 = vertex_[p1.x];
+            Vertex2D v2 = vertex_[p2.x];
+            Vertex2D v3 = vertex_[p3.x];
+            if (v1._out && v2._out && v3._out)
+                continue;
+            v1.uv = p1.y;
+            v1.norm = p1.z;
+            v2.uv = p2.y;
+            v2.norm = p2.z;
+            v3.uv = p3.y;
+            v3.norm = p3.z;
+            // sort p1, p2, p3
+            if (v1.x > v2.x)
+                std::swap(v1, v2);
+            if (v1.x > v3.x)
+                std::swap(v1, v3);
+            if (v2.x > v3.x)
+                std::swap(v2, v3);
+
+            // #pragma omp critical
             {
-                float z1 = v1.z / *camera_scale;
-                float z2 = v2.z / *camera_scale;
-                float z3 = v3.z / *camera_scale;
-                Vertex2D vertex1 = {v1.x / z1 + mx, v1.y / z1 + my, z1, p1.y, p1.z};
-                Vertex2D vertex2 = {v2.x / z2 + mx, v2.y / z2 + my, z2, p2.y, p2.z};
-                Vertex2D vertex3 = {v3.x / z3 + mx, v3.y / z3 + my, z3, p3.y, p3.z};
-                // sort p1, p2, p3
-                if (vertex1.x > vertex2.x)
-                    std::swap(vertex1, vertex2);
-                if (vertex1.x > vertex3.x)
-                    std::swap(vertex1, vertex3);
-                if (vertex2.x > vertex3.x)
-                    std::swap(vertex2, vertex3);
-// #pragma omp critical
-                {
-                    faces_.push_back({vertex1, vertex2, vertex3});
-                }
+                faces_.push_back({v1, v2, v3});
             }
         }
     }
@@ -132,6 +178,7 @@ public:
     {
         int dx;
         int dy;
+        int y1_;
         int D;
         int y_step = 1;
         int y, ret = 0;
@@ -140,6 +187,7 @@ public:
         {
             dx = x1 - x0;
             dy = y1 - y0;
+            y1_ = y1;
             if (dy < 0)
             {
                 y_step = -1; // if k < 0, only change the y direction
@@ -161,7 +209,7 @@ public:
                 {
                     y = y + y_step;
                     D = D + 2 * dy;
-                    if (D > 0)
+                    if (D > 0 || y == y1_ + y_step)
                     {
                         D = D - 2 * dx;
                         break;
@@ -212,10 +260,6 @@ public:
         int y2 = round(y2f);
         int y3 = round(y3f);
 
-        int c = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1); // up, down, line
-        if (c == 0)                                            // not a line
-            return;
-
         float coff3 = (y2f - y3f) * (x1f - x3f) + (x3f - x2f) * (y1f - y3f);
         f.coff11 = (y2f - y3f) / coff3;
         f.coff12 = (x3f - x2f) / coff3;
@@ -233,26 +277,34 @@ public:
         f.norm2 = model->_norms[face.y.norm];
         f.norm3 = model->_norms[face.z.norm];
 
-        Bresenham l1(x1, y1, x3, y3);
-        Bresenham l2(x1, y1, x2, y2);
-        Bresenham l3(x2, y2, x3, y3);
-        // std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
-        if (x2 > x1)
-        {
-            for (int i = x1; i < x2; ++i)
+        int c = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1); // up, down, line
+        if (c != 0)
+        { // not a line
+            Bresenham l1(x1, y1, x3, y3);
+            Bresenham l2(x1, y1, x2, y2);
+            Bresenham l3(x2, y2, x3, y3);
+            // std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
+            if (x2 > x1)
             {
-                // std::cout << "scanline: " << i << std::endl;
-                Draw_scanline(i, l1.step(c > 0), l2.step(c < 0), &f);
+                for (int i = x1; i < x2; ++i)
+                {
+                    // std::cout << "scanline: " << i << std::endl;
+                    Draw_scanline(i, l1.step(c < 0), l2.step(c > 0), &f);
+                }
+            }
+            if (x3 > x2)
+            {
+                for (int i = x2; i < x3; ++i)
+                {
+                    // std::cout << "scanline: " << i << std::endl;
+                    Draw_scanline(i, l1.step(c < 0), l3.step(c > 0), &f);
+                }
             }
         }
-        if (x3 > x2)
-        {
-            for (int i = x2; i < x3; ++i)
-            {
-                // std::cout << "scanline: " << i << std::endl;
-                Draw_scanline(i, l1.step(c > 0), l3.step(c < 0), &f);
-            }
-        }
+        Draw_line(x1, y1, x2, y2, &f);
+        Draw_line(x1, y1, x3, y3, &f);
+        Draw_line(x2, y2, x3, y3, &f);
+        //Draw_scanline(x3, l1.step(c > 0), l3.step(c < 0), &f);
     }
     inline void Draw_scanline(int x, int y1, int y2, _Face *f)
     {
@@ -278,7 +330,7 @@ public:
                 Vec2f uv_pixel = (frac1 * f->uv1 + frac2 * f->uv2 + frac3 * f->uv3) * z_;
                 uint32_t argb = model->diffuse(uv_pixel);
                 argb = ((argb & 0x000000ff) << 16) | ((argb & 0x00ff0000) >> 16) | ((argb & 0xff00ff00));
-                frame_buffer->SetPixel(x, y, z_, argb);
+                frame_buffer_->set_pixel(x, y, z_, argb);
             }
             // double z_ = 1.0 / (frac1 / f->z1 + frac2 / f->z2 + frac3 / f->z3);
             // Vec2f uv_pixel = ((float)frac1 * f->uv1 / f->z1 + (float)frac2 * f->uv2 / f->z2 + (float)frac3 * f->uv3 / f->z3) * (float)z_;
@@ -288,23 +340,63 @@ public:
             // frame_buffer->SetPixel(x, y, z_, vector_to_color(model->diffuse(uv_pixel)));
         }
     }
+    inline void Draw_line(int x0, int y0, int x1, int y1, _Face *f)
+    {
+        bool flip = false;
+        if (std::abs(x0 - x1) < std::abs(y0 - y1))
+        { // if dy > dx, swap x and y
+            std::swap(x0, y0);
+            std::swap(x1, y1);
+            flip = true;
+        }
+        if (x0 > x1)
+        { //  if x0 > x1, swap the start and end
+            std::swap(x0, x1);
+            std::swap(y0, y1);
+        }
+        int dx = x1 - x0;
+        int dy = y1 - y0;
+        int D = -dx; // error
+        int y_step = 1;
+        if (dy < 0)
+        {
+            y_step = -1; // if k < 0, only change the y direction
+            dy = -dy;    // dy = abs(dy)
+        }
+        int y = y0;
+        for (int x = x0; x < x1 + 1; x++)
+        {
+            if (flip)
+                Draw_scanline(y, x, x, f);
+            else
+                Draw_scanline(x, y, y, f);
+            D = D + 2 * dy;
+            if (D > 0)
+            {
+                y = y + y_step; // next y
+                D = D - 2 * dx;
+            }
+        }
+    }
 };
 
 class Render
 {
 public:
     Bitmap *frame_buffer;
+    FrameBuffer fb;
     Mat4x4f camera = matrix_set_identity();
     float camera_scale = 1;
 
     std::vector<RenderObj> obj_renders;
 
-    Render(Bitmap &bitmap) : frame_buffer(&bitmap) {}
+    Render(int w, int h) : fb(FrameBuffer(w, h)) {}
     void set_camera(Mat4x4f c, float scale)
     {
         camera = c;
         camera_scale = scale;
     }
+
     void move_camera_x(float dis)
     {
         camera.m[0][3] += camera.m[0][0] * dis;
@@ -350,51 +442,12 @@ public:
             i.render();
         }
     }
-    void Draw_line(int x0, int y0, int x1, int y1, uint32_t color)
-    {
-        bool flip = false;
-        if (std::abs(x0 - x1) < std::abs(y0 - y1))
-        { // if dy > dx, swap x and y
-            std::swap(x0, y0);
-            std::swap(x1, y1);
-            flip = true;
-        }
-        if (x0 > x1)
-        { //  if x0 > x1, swap the start and end
-            std::swap(x0, x1);
-            std::swap(y0, y1);
-        }
-        int dx = x1 - x0;
-        int dy = y1 - y0;
-        int D = -dx; // error
-        int y_step = 1;
-        if (dy < 0)
-        {
-            y_step = -1; // if k < 0, only change the y direction
-            dy = -dy;    // dy = abs(dy)
-        }
-        int y = y0;
-        for (int x = x0; x < x1 + 1; x++)
-        {
-            if (flip)
-                frame_buffer->SetPixel(y, x, color);
-            else
-                frame_buffer->SetPixel(x, y, color);
-            D = D + 2 * dy;
-            if (D > 0)
-            {
-                y = y + y_step; // next y
-                D = D - 2 * dx;
-            }
-        }
-    }
-    // input: (x0,y0) ,(x1,y1) and x1 <= x2, slope <= 1
-    // output: step through x, output y
 };
 
 RenderObj::RenderObj(Render *render, Obj *obj)
 {
     frame_buffer = render->frame_buffer;
+    frame_buffer_ = &(render->fb);
     camera = &(render->camera);
     camera_scale = &(render->camera_scale);
 

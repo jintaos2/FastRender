@@ -1050,18 +1050,18 @@ inline static Mat4x4f matrix_set_rotate(float x, float y, float z, float theta)
     return m;
 }
 
-// 齐次变换矩阵
-inline static Mat4x4f transformm_invert(Mat4x4f & in){
-    Mat4x4f m(in);
-    std::swap(m.m[0][1],m.m[1][0]);
-    std::swap(m.m[0][2],m.m[2][0]);
-    std::swap(m.m[1][2],m.m[2][1]);
-    m.m[0][3] = -m.m[0][3];
-    m.m[1][3] = -m.m[1][3];
-    m.m[2][3] = -m.m[2][3];
-    return m;
+template <typename T>
+inline Vector<3, T> operator*(const Matrix<3, 3, T> &m, const Vector<3, T> &x)
+{
+    Vector<3, T> y;
+    y[0] = m.m[0][0] * x[0] + m.m[0][1] * x[1] + m.m[0][2] * x[2];
+    y[1] = m.m[1][0] * x[0] + m.m[1][1] * x[1] + m.m[1][2] * x[2];
+    y[2] = m.m[2][0] * x[0] + m.m[2][1] * x[1] + m.m[2][2] * x[2];
+    return y;
 }
-inline static Mat3x3f transformm_rotate(Mat4x4f & m){
+
+inline static Mat3x3f transformm_rotate(Mat4x4f &m)
+{
     Mat3x3f out;
     out.m[0][0] = m.m[0][0];
     out.m[0][1] = m.m[0][1];
@@ -1074,14 +1074,33 @@ inline static Mat3x3f transformm_rotate(Mat4x4f & m){
     out.m[2][2] = m.m[2][2];
     return out;
 }
-inline static Vec3f transformm_move(Mat4x4f & m){
+inline static Vec3f transformm_move(Mat4x4f &m)
+{
     Vec3f out;
     out.x = m.m[0][3];
     out.y = m.m[1][3];
     out.z = m.m[2][3];
     return out;
 }
-
+// 齐次变换矩阵
+inline static Mat4x4f transformm_invert(Mat4x4f& in)
+{
+    Mat3x3f r = transformm_rotate(in);
+    std::swap(r.m[0][1], r.m[1][0]);
+    std::swap(r.m[0][2], r.m[2][0]);
+    std::swap(r.m[1][2], r.m[2][1]);
+    Vec3f l = -r * Vec3f(in.m[0][3], in.m[1][3], in.m[2][3]);
+    Mat4x4f out = matrix_set_identity();
+    for (int i = 0; i < 3; ++i)
+    {
+        for (int j = 0; j < 3; ++j)
+            out[i][j] = r[i][j];
+    }
+    out[0][3] = l[0];
+    out[1][3] = l[1];
+    out[2][3] = l[2];
+    return out;
+}
 // 摄影机变换矩阵：eye/视点位置，at/看向哪里，up/指向上方的矢量
 inline static Mat4x4f matrix_set_lookat(const Vec3f &eye, const Vec3f &at, const Vec3f &up)
 {
@@ -1110,7 +1129,3 @@ inline static Mat4x4f matrix_set_perspective(float fovy, float aspect, float zn,
 }
 
 #endif
-
-
-
-
