@@ -74,6 +74,7 @@ inline std::ostream &operator<<(std::ostream &os, const Vertex2D &a)
     os << "x:" << a.x << " y:" << a.y << " z:" << a.z << "  norm_ID:" << a.norm << "  uv_ID:" << a.uv;
     return os;
 }
+
 struct Obj
 {
 public:
@@ -107,19 +108,16 @@ public:
         Vec3f norm1, norm2, norm3;
         Vec2f uv1, uv2, uv3;
     };
-    // |slope| < 1
-    // input: (x0,y0) ,(x1,y1) and x1 <= x2, slope <= 1
-    // output: step through x, output y
     struct Bresenham
     {
-        bool UP;
+        uint32_t ret_;
         int dx;
         int dy;
         int D;
         int y_step = 1;
         int y, ret;
-        bool flip = 1;
-        Bresenham(int x0, int y0, int x1, int y1, bool UP) : UP(UP), dx(x1 - x0), dy(y1 - y0), y(y0), ret(y0)
+        bool flip = true;
+        Bresenham(int x0, int y0, int x1, int y1, bool UP) : dx(x1 - x0), dy(y1 - y0), y(y0), ret(y0)
         {
             if (dy < 0)
             {
@@ -127,10 +125,11 @@ public:
                 dy = -dy;    // dy = abs(dy)
             }
             if (dx >= dy)
-                flip = 0;
+                flip = false;
             else
-                std::swap(dx, dy); // flip
-            D = -dx;               // error term
+                std::swap(dx, dy);                     // flip
+            D = -dx;                                   // error term
+            ret_ = UP ^ (y_step > 0) ? 0xffffffff : 0; // (up && y_step = 1 || down && y_step = -1), y-y_step
         }
         inline int step()
         {
@@ -144,7 +143,7 @@ public:
                     if (D > 0)
                     {
                         D = D - 2 * dx;
-                        return UP ? ret : y - y_step;
+                        return ret_ & ret | (~ret_) & (y - y_step);
                     }
                 }
             }
@@ -275,69 +274,43 @@ public:
         f.norm2 = model->_norms[face.y.norm];
         f.norm3 = model->_norms[face.z.norm];
 
-        //int c = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1); // up, down, line
-        if (x3 - x1 > 1)
+        int c = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1); // up, down, line
+        if (c < 0)                                             // up
         {
-            float c = y2 - y1 - 1.0f * (y3 - y1) / (x3 - x1) * (x2 - x1);
-            if (c > 0.9) // up
-            {
-                Bresenham l1(x1, y1, x3, y3, false);
-                Bresenham l2(x1, y1, x2, y2, true);
-                Bresenham l3(x2, y2, x3, y3, true);
-                std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
-                int i = x1;
-                for (; i < x2; ++i)
-                {
-                    // std::cout << "scanline: " << i << std::endl;
-                    Draw_scanline(i, l2.step(), l1.step(), &f);
-                }
-                for (; i < x3; ++i)
-                {
-                    // std::cout << "scanline: " << i << std::endl;
-                    Draw_scanline(i, l3.step(), l1.step(), &f);
-                }
-                if (x2 == x3)
-                    Draw_scanline(x3, y2, y3, &f);
-                else
-                    Draw_scanline(x3, min(y3, l3.step()), max(y3, l1.step()), &f);
-                return;
-            }
-            else if (c < -0.9) // down
-            {
-                Bresenham l1(x1, y1, x3, y3, true);
-                Bresenham l2(x1, y1, x2, y2, false);
-                Bresenham l3(x2, y2, x3, y3, false);
-                // std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
-                int i = x1;
-                for (; i < x2; ++i)
-                {
-                    // std::cout << "scanline: " << i << std::endl;
-                    Draw_scanline(i, l1.step(), l2.step(), &f);
-                }
-                for (; i < x3; ++i)
-                {
-                    // std::cout << "scanline: " << i << std::endl;
-                    Draw_scanline(i, l1.step(), l3.step(), &f);
-                }
-                if (x2 == x3)
-                    Draw_scanline(x3, y3, y2, &f);
-                else
-                    Draw_scanline(x3, min(y3, l1.step()), max(y3, l3.step()), &f); // decide the end point
-                return;
-            }
+            Bresenham l1(x1, y1, x3, y3, false);
+            Bresenham l2(x1, y1, x2, y2, true);
+            Bresenham l3(x2, y2, x3, y3, true);
+            // std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
+            for (int i = x1; i < x2; ++i)
+                Draw_scanline(i, l2.step(), l1.step(), &f);
+            for (int i = x2; i < x3; ++i)
+                Draw_scanline(i, l3.step(), l1.step(), &f);
+            if (x2 == x3)
+                Draw_scanline(x3, y2, y3, &f);
+            else
+                Draw_scanline(x3, min(y3, l3.step()), max(y3, l1.step()), &f);
         }
-        Draw_line(x1, y1, x2, y2, &f);
-        Draw_line(x1, y1, x3, y3, &f);
-        Draw_line(x2, y2, x3, y3, &f);
+        else // down
+        {
+            Bresenham l1(x1, y1, x3, y3, true);
+            Bresenham l2(x1, y1, x2, y2, false);
+            Bresenham l3(x2, y2, x3, y3, false);
+            int i = x1;
+            for (; i < x2; ++i)
+                Draw_scanline(i, l1.step(), l2.step(), &f);
+            for (; i < x3; ++i)
+                Draw_scanline(i, l1.step(), l3.step(), &f);
+            if (x2 == x3)
+                Draw_scanline(x3, y3, y2, &f);
+            else
+                Draw_scanline(x3, min(y3, l1.step()), max(y3, l3.step()), &f); // decide the end point
+        }
     }
     inline void Draw_scanline(int x, int y1, int y2, _Face *f)
     {
-        if (x < 0 || x >= frame_buffer_->w_)
+        if (x < 0 || x >= frame_buffer_->w_ || y1 < y2)
             return;
-        // if(y1 < y2) std::cout << "xxx" << std::endl;
-        if (y1 > y2)
-            std::swap(y1, y2);
-        for (int y = y1; y <= y2; ++y)
+        for (int y = y2; y <= y1; ++y)
         {
             // double frac1 = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) * 1.0 / ((y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3));
             // double frac2 = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) * 1.0 / ((y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3));
@@ -376,7 +349,6 @@ public:
             std::swap(x1, y1);
             flip = true;
         }
-
         int dx = x1 - x0;
         int dy = y1 - y0;
         int D = -dx; // error

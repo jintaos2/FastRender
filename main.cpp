@@ -38,9 +38,9 @@ int main()
     mymodel._verts.push_back({-300, -300, 300});
     mymodel._verts.push_back({-300, 300, -300});
     mymodel._faces.push_back({{0, 2, 0}, {1, 2, 0}, {2, 2, 0}});
-    mymodel._faces.push_back({{0, 1, 0}, {1, 1, 0}, {3, 1, 0}});
+    // mymodel._faces.push_back({{0, 1, 0}, {1, 1, 0}, {3, 1, 0}});
     mymodel._faces.push_back({{0, 0, 0}, {2, 0, 0}, {3, 0, 0}});
-    mymodel._faces.push_back({{1, 3, 0}, {2, 3, 0}, {3, 3, 0}});
+    // mymodel._faces.push_back({{1, 3, 0}, {2, 3, 0}, {3, 3, 0}});
     mymodel._norms.push_back({1, 1, 1});
     mymodel._uv.push_back({0.01, 0.01});
     mymodel._uv.push_back({0.01, 0.99});
@@ -91,7 +91,7 @@ int main()
         r.fb.fill(0xffffffff);
         test1.coordinate = test1.coordinate * matrix_set_rotate(0, 1, 0, 0.05);
         test2.coordinate = test2.coordinate * matrix_set_rotate(0, 1, 0, -0.05);
-        test3.coordinate = test3.coordinate * matrix_set_rotate(1, 1, 0, -0.01);
+        test3.coordinate = test3.coordinate * matrix_set_rotate(1, 1, 0, -0.02);
         r.render();
         // std::cout << "===============================new frame ==========================\n";
         glPixelZoom(ZOOM, ZOOM);

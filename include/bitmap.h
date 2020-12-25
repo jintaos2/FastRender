@@ -269,7 +269,7 @@ public:
         int32_t dx = (fx >> 8) & 0xff;
         int32_t dy = (fy >> 8) & 0xff;
         if (_w <= 0 || _h <= 0)
-            return 0;
+            return 0xffff0000;
         uint32_t c00 = GetPixel(x1, y1);
         uint32_t c01 = GetPixel(x2, y1);
         uint32_t c10 = GetPixel(x1, y2);
