@@ -10,10 +10,6 @@ int main()
     Render r(SCR_WIDTH, SCR_HEIGHT);
     r.set_camera({{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, -6.0}, {0, 0, 0, 1}}, 1400.0);
 
-    Model model("res/diablo3_pose.obj");
-    Obj test1(&model, {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 2);
-    Obj test2(&model, {{1, 0, 0, 1}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
-
     Bitmap mybitmap(4, 4);
     mybitmap.SetPixel(0, 0, 0xff0000ff);
     mybitmap.SetPixel(0, 1, 0xff0000ff);
@@ -38,20 +34,28 @@ int main()
     mymodel._verts.push_back({-300, -300, 300});
     mymodel._verts.push_back({-300, 300, -300});
     mymodel._faces.push_back({{0, 2, 0}, {1, 2, 0}, {2, 2, 0}});
-    // mymodel._faces.push_back({{0, 1, 0}, {1, 1, 0}, {3, 1, 0}});
+    mymodel._faces.push_back({{0, 1, 0}, {1, 1, 0}, {3, 1, 0}});
     mymodel._faces.push_back({{0, 0, 0}, {2, 0, 0}, {3, 0, 0}});
-    // mymodel._faces.push_back({{1, 3, 0}, {2, 3, 0}, {3, 3, 0}});
+    mymodel._faces.push_back({{1, 3, 0}, {2, 3, 0}, {3, 3, 0}});
     mymodel._norms.push_back({1, 1, 1});
     mymodel._uv.push_back({0.01, 0.01});
     mymodel._uv.push_back({0.01, 0.99});
     mymodel._uv.push_back({0.99, 0.01});
     mymodel._uv.push_back({0.99, 0.99});
 
-    Obj test3(&mymodel, {{1, 0, 0, -2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 0.002);
+    Obj test3(&mymodel, {{1, 0, 0, 2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 0.002);
 
-    r.add_obj(test1);
-    r.add_obj(test2);
-    r.add_obj(test3);
+    Model model("res/diablo3_pose.obj");
+    Obj test1(&model, {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 2);
+    Obj test2(&model, {{1, 0, 0, 1}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
+    Obj test4(&model, {{1, 0, 0, -2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
+    Obj test5(&model, {{1, 0, 0, 3}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
+
+    r.add_obj(&test1);
+    r.add_obj(&test2);
+    r.add_obj(&test3);
+    r.add_obj(&test4);
+    r.add_obj(&test5);
 
     ////////////////////
     // GLFW
@@ -80,9 +84,9 @@ int main()
         else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
             r.move_camera_x(0.1);
         else if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
-            r.rotate_camera_up(0.1);
-        else if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
             r.rotate_camera_up(-0.1);
+        else if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
+            r.rotate_camera_up(0.1);
         else if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
             r.rotate_camera_left(0.1);
         else if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
@@ -92,6 +96,8 @@ int main()
         test1.coordinate = test1.coordinate * matrix_set_rotate(0, 1, 0, 0.05);
         test2.coordinate = test2.coordinate * matrix_set_rotate(0, 1, 0, -0.05);
         test3.coordinate = test3.coordinate * matrix_set_rotate(1, 1, 0, -0.02);
+        test4.coordinate = test4.coordinate * matrix_set_rotate(0, 0, 1, -0.05);
+        test5.coordinate = test5.coordinate * matrix_set_rotate(0, 0, 1, 0.05);
         r.render();
         // std::cout << "===============================new frame ==========================\n";
         glPixelZoom(ZOOM, ZOOM);
@@ -103,4 +109,3 @@ int main()
     glfwTerminate();
     return 0;
 }
-

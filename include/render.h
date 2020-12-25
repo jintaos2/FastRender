@@ -173,7 +173,7 @@ public:
         float fx = frame_buffer_->w_ + 0.5;
         float fy = frame_buffer_->h_ + 0.5;
 
-#pragma omp parallel for
+// #pragma omp parallel for
         for (int i = 0; i < vertex_.size(); ++i)
         {
             Vec3f v = rotate_ * (model->_verts[i]) + move_;                 // 顶点坐标转换.
@@ -183,7 +183,7 @@ public:
                 vertex._out = true;
             vertex_[i] = vertex;
         }
-#pragma omp parallel for
+// #pragma omp parallel for
         for (int i = 0; i < norms_.size(); ++i)
         {
             norms_[i] = rotate_ * (model->_norms[i]); // 顶点法向量转换.
@@ -425,9 +425,9 @@ public:
         s = s < min_ ? min_ : s;
         camera_scale = s > max_ ? max_ : s;
     }
-    void add_obj(Obj &obj)
+    void add_obj(Obj *obj)
     {
-        obj_renders.push_back(RenderObj(this, &obj));
+        obj_renders.push_back(RenderObj(this, obj));
     }
     void render()
     {
