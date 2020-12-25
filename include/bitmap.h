@@ -163,7 +163,7 @@ public:
         uint32_t biClrImportant;
     };
 
-    // 读取 BMP 图片，支持 24/32 位两种格式
+    // 读取 BMP 图片，支持 24/32 位两种格式.
     inline static Bitmap *LoadFile(const char *filename)
     {
         FILE *fp = fopen(filename, "rb");
@@ -213,7 +213,7 @@ public:
         return bmp;
     }
 
-    // 保存 BMP 图片
+    // 保存 BMP 图片.
     inline bool SaveFile(const char *filename, bool withAlpha = false) const
     {
         FILE *fp = fopen(filename, "wb");
@@ -257,7 +257,7 @@ public:
         return true;
     }
 
-    // 双线性插值
+    // 双线性插值.
     inline uint32_t SampleBilinear(float x, float y) const
     {
         int32_t fx = (int32_t)(x * 0x10000);
@@ -277,7 +277,7 @@ public:
         return BilinearInterp(c00, c01, c10, c11, dx, dy);
     }
 
-    // 纹理采样
+    // 纹理采样.
     inline uint32_t Sample2D(float u, float v) const
     {
         uint32_t rgba = SampleBilinear(u * _w + 0.5f, v * _h + 0.5f);
@@ -290,13 +290,13 @@ public:
         return Sample2D(uv.x, uv.y);
     }
 
-    // 按照 Vec4f 画点
+    // 按照 Vec4f 画点.
     inline void SetPixel(int x, int y, const Vec4f &color)
     {
         SetPixel(x, y, vector_to_color(color));
     }
 
-    // 上下反转
+    // 上下反转.
     inline void FlipVertical()
     {
         uint8_t *buffer = new uint8_t[_pitch];
@@ -309,7 +309,7 @@ public:
         delete[] buffer;
     }
 
-    // 水平反转
+    // 水平反转.
     inline void FlipHorizontal()
     {
         for (int y = 0; y < _h; y++)
@@ -325,7 +325,7 @@ public:
     }
 
 protected:
-    // 双线性插值计算：给出四个点的颜色，以及坐标偏移，计算结果
+    // 双线性插值计算：给出四个点的颜色，以及坐标偏移，计算结果.
     inline static uint32_t BilinearInterp(uint32_t tl, uint32_t tr,
                                           uint32_t bl, uint32_t br, int32_t distx, int32_t disty)
     {

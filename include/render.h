@@ -2,6 +2,7 @@
 #define RENDER_H
 
 #include <stdio.h>
+#include <algorithm>
 #include "bitmap.h"
 #include "shader.h"
 #include "model.h"
@@ -111,27 +112,25 @@ public:
     // output: step through x, output y
     struct Bresenham
     {
+        bool UP;
         int dx;
         int dy;
         int D;
         int y_step = 1;
-        int y, ret = 0;
+        int y, ret;
         bool flip = 1;
-        Bresenham(int x0, int y0, int x1, int y1)
+        Bresenham(int x0, int y0, int x1, int y1, bool UP) : UP(UP), dx(x1 - x0), dy(y1 - y0), y(y0), ret(y0)
         {
-            dx = x1 - x0;
-            dy = y1 - y0;
             if (dy < 0)
             {
                 y_step = -1; // if k < 0, only change the y direction
                 dy = -dy;    // dy = abs(dy)
             }
-            if (dx >= dy) // |k| < 1, not flip
+            if (dx >= dy)
                 flip = 0;
             else
-                std::swap(dx, dy);
-            D = -dx;
-            y = y0; // initial value of y
+                std::swap(dx, dy); // flip
+            D = -dx;               // error term
         }
         inline int step()
         {
@@ -145,7 +144,7 @@ public:
                     if (D > 0)
                     {
                         D = D - 2 * dx;
-                        return ret;
+                        return UP ? ret : y - y_step;
                     }
                 }
             }
@@ -280,22 +279,51 @@ public:
         if (x3 - x1 > 1)
         {
             float c = y2 - y1 - 1.0f * (y3 - y1) / (x3 - x1) * (x2 - x1);
-            if (c < -1.4 || c > 1.4)
+            if (c > 0.9) // up
             {
-                Bresenham l1(x1, y1, x3, y3);
-                Bresenham l2(x1, y1, x2, y2);
-                Bresenham l3(x2, y2, x3, y3);
+                Bresenham l1(x1, y1, x3, y3, false);
+                Bresenham l2(x1, y1, x2, y2, true);
+                Bresenham l3(x2, y2, x3, y3, true);
+                std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
+                int i = x1;
+                for (; i < x2; ++i)
+                {
+                    // std::cout << "scanline: " << i << std::endl;
+                    Draw_scanline(i, l2.step(), l1.step(), &f);
+                }
+                for (; i < x3; ++i)
+                {
+                    // std::cout << "scanline: " << i << std::endl;
+                    Draw_scanline(i, l3.step(), l1.step(), &f);
+                }
+                if (x2 == x3)
+                    Draw_scanline(x3, y2, y3, &f);
+                else
+                    Draw_scanline(x3, min(y3, l3.step()), max(y3, l1.step()), &f);
+                return;
+            }
+            else if (c < -0.9) // down
+            {
+                Bresenham l1(x1, y1, x3, y3, true);
+                Bresenham l2(x1, y1, x2, y2, false);
+                Bresenham l3(x2, y2, x3, y3, false);
                 // std::cout << "xxxyyy:  " << x1 << ' ' << x2 << ' ' << x3 << ' ' << y1 << ' ' << y2 << ' ' << y3 << " \n";
-                for (int i = x1; i < x2; ++i)
+                int i = x1;
+                for (; i < x2; ++i)
                 {
                     // std::cout << "scanline: " << i << std::endl;
                     Draw_scanline(i, l1.step(), l2.step(), &f);
                 }
-                for (int i = x2; i < x3; ++i)
+                for (; i < x3; ++i)
                 {
                     // std::cout << "scanline: " << i << std::endl;
                     Draw_scanline(i, l1.step(), l3.step(), &f);
                 }
+                if (x2 == x3)
+                    Draw_scanline(x3, y3, y2, &f);
+                else
+                    Draw_scanline(x3, min(y3, l1.step()), max(y3, l3.step()), &f); // decide the end point
+                return;
             }
         }
         Draw_line(x1, y1, x2, y2, &f);
@@ -306,6 +334,7 @@ public:
     {
         if (x < 0 || x >= frame_buffer_->w_)
             return;
+        // if(y1 < y2) std::cout << "xxx" << std::endl;
         if (y1 > y2)
             std::swap(y1, y2);
         for (int y = y1; y <= y2; ++y)
