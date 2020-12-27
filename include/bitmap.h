@@ -6,6 +6,21 @@
 //---------------------------------------------------------------------
 // 位图库：用于加载/保存图片，画点，画线，颜色读取
 //---------------------------------------------------------------------
+struct _Color
+{
+    union
+    {
+        struct
+        {
+            uint8_t r, g, b, a;
+        };
+        struct
+        {
+            uint8_t B, G, R, A;
+        };
+        uint32_t argb = 0x000000ff;
+    };
+};
 class Bitmap
 {
 public:
@@ -19,7 +34,6 @@ public:
     {
         _pitch = width * 4;
         _bits = new uint8_t[_pitch * _h];
-        Fill(0);
     }
 
     inline Bitmap(const Bitmap &src) : _w(src._w), _h(src._h), _pitch(src._pitch)
@@ -41,6 +55,7 @@ public:
         _h = tmp->_h;
         _pitch = tmp->_pitch;
         _bits = tmp->_bits;
+        
         tmp->_bits = NULL;
         delete tmp;
     }
@@ -55,25 +70,6 @@ public:
     inline const uint8_t *GetLine(int y) const { return _bits + _pitch * y; }
 
 public:
-    inline void Fill(uint32_t color)
-    {
-        for (int j = 0; j < _h; j++)
-        {
-            uint32_t *row = (uint32_t *)(_bits + j * _pitch);
-            for (int i = 0; i < _w; i++, row++)
-                memcpy(row, &color, sizeof(uint32_t));
-        }
-    }
-
-    inline void SetPixel(int x, int y, uint32_t color)
-    {
-        if (x >= 0 && x < _w && y >= 0 && y < _h)
-        {
-            memcpy(_bits + y * _pitch + x * 4, &color, sizeof(uint32_t));
-        }
-    }
-
-
     inline uint32_t GetPixel(int x, int y) const
     {
         uint32_t color = 0;
@@ -83,71 +79,13 @@ public:
         }
         return color;
     }
-
-    inline void DrawLine(int x1, int y1, int x2, int y2, uint32_t color)
+    inline void SetPixel(int x, int y, uint32_t color)
     {
-        int x, y;
-        if (x1 == x2 && y1 == y2)
+        if (x >= 0 && x < _w && y >= 0 && y < _h)
         {
-            SetPixel(x1, y1, color);
-            return;
-        }
-        else if (x1 == x2)
-        {
-            int inc = (y1 <= y2) ? 1 : -1;
-            for (y = y1; y != y2; y += inc)
-                SetPixel(x1, y, color);
-            SetPixel(x2, y2, color);
-        }
-        else if (y1 == y2)
-        {
-            int inc = (x1 <= x2) ? 1 : -1;
-            for (x = x1; x != x2; x += inc)
-                SetPixel(x, y1, color);
-            SetPixel(x2, y2, color);
-        }
-        else
-        {
-            int dx = (x1 < x2) ? x2 - x1 : x1 - x2;
-            int dy = (y1 < y2) ? y2 - y1 : y1 - y2;
-            int rem = 0;
-            if (dx >= dy)
-            {
-                if (x2 < x1)
-                    x = x1, y = y1, x1 = x2, y1 = y2, x2 = x, y2 = y;
-                for (x = x1, y = y1; x <= x2; x++)
-                {
-                    SetPixel(x, y, color);
-                    rem += dy;
-                    if (rem >= dx)
-                    {
-                        rem -= dx;
-                        y += (y2 >= y1) ? 1 : -1;
-                        SetPixel(x, y, color);
-                    }
-                }
-                SetPixel(x2, y2, color);
-            }
-            else
-            {
-                if (y2 < y1)
-                    x = x1, y = y1, x1 = x2, y1 = y2, x2 = x, y2 = y;
-                for (x = x1, y = y1; y <= y2; y++)
-                {
-                    SetPixel(x, y, color);
-                    rem += dx;
-                    if (rem >= dy)
-                    {
-                        rem -= dy;
-                        x += (x2 >= x1) ? 1 : -1;
-                        SetPixel(x, y, color);
-                    }
-                }
-                SetPixel(x2, y2, color);
-            }
+            memcpy(_bits + y * _pitch + x * 4, &color, sizeof(uint32_t));
         }
     }
-
     struct BITMAPINFOHEADER
     { // bmih
         uint32_t biSize;
@@ -278,22 +216,50 @@ public:
     }
 
     // 纹理采样.
-    inline uint32_t Sample2D(float u, float v) const
+    inline uint32_t Sample2D(float u, float v)
     {
-        uint32_t rgba = SampleBilinear(u * _w + 0.5f, v * _h + 0.5f);
-        return rgba;
+        float x = u * _w + 0.5f;
+        float y = v * _h + 0.5f;
+        int x1 = x;
+        int y1 = y;
+        float frac1 = (x - x1);
+        float frac2 = (y - y1);
+        float f00 = frac1 * frac2;
+        float f01 = frac1 * (1 - frac2);
+        float f10 = (1 - frac1) * frac2;
+        float f11 = (1 - frac1) * (1 - frac2);
+        x1 = x1 < 0 ? 0 : x1;
+        x1 = x1 > _w - 2 ? _w - 2 : x1;
+        y1 = y1 < 0 ? 0 : y1;
+        y1 = y1 > _h - 2 ? _h - 2 : y1;
+        return frac1 + frac2 + f00 + f01 + f10 + f11 + x1 + y1;
+        uint32_t c00 = get_color(x1, y1);
+        uint32_t c10 = get_color(x1 + 1, y1);
+        uint32_t c01 = get_color(x1, y1 + 1);
+        uint32_t c11 = get_color(x1 + 1, y1 + 1);
+        uint32_t B = (c00 & 0x000000ff) * f00 + (c01 & 0x000000ff) * f01 + (c10 & 0x000000ff) * f10 + (c11 & 0x000000ff) * f11;
+        uint32_t G = (c00 & 0x0000ff00) * f00 + (c01 & 0x0000ff00) * f01 + (c10 & 0x0000ff00) * f10 + (c11 & 0x0000ff00) * f11;
+        uint32_t R = (c00 & 0x00ff0000) * f00 + (c01 & 0x00ff0000) * f01 + (c10 & 0x00ff0000) * f10 + (c11 & 0x00ff0000) * f11;
+        return c11;
+        return (B & 0x000000ff) << 16 | (G & 0x0000ff00) | (R & 0x00ff0000) >> 16 | 0xff000000;
     }
-
+    inline uint32_t get_color(int x, int y)
+    {
+        return ((uint32_t *)_bits)[y * _w + x];
+    }
+    inline uint32_t Sample2D_easy(float u, float v)
+    {
+        uint32_t x1 = u * _w;
+        uint32_t y1 = v * _h;
+        x1 = x1 > _w - 1 ? _w - 1 : x1;
+        y1 = y1 > _h - 1 ? _h - 1 : y1;
+        uint32_t bgra = ((uint32_t*)_bits)[y1 * _w + x1];
+        return (bgra & 0x000000ff) << 16 | (bgra >> 16) & 0x000000ff | bgra & 0xff00ff00;
+    }
     // 纹理采样：直接传入 Vec2f
-    inline uint32_t Sample2D(const Vec2f &uv) const
+    inline uint32_t Sample2D(const Vec2f &uv)
     {
         return Sample2D(uv.x, uv.y);
-    }
-
-    // 按照 Vec4f 画点.
-    inline void SetPixel(int x, int y, const Vec4f &color)
-    {
-        SetPixel(x, y, vector_to_color(color));
     }
 
     // 上下反转.
@@ -307,21 +273,6 @@ public:
             memcpy(GetLine(j), buffer, _pitch);
         }
         delete[] buffer;
-    }
-
-    // 水平反转.
-    inline void FlipHorizontal()
-    {
-        for (int y = 0; y < _h; y++)
-        {
-            for (int i = 0, j = _w - 1; i < j; i++, j--)
-            {
-                uint32_t c1 = GetPixel(i, y);
-                uint32_t c2 = GetPixel(j, y);
-                SetPixel(i, y, c2);
-                SetPixel(j, y, c1);
-            }
-        }
     }
 
 protected:
@@ -354,6 +305,7 @@ public:
     int32_t _h;
     int32_t _pitch;
     uint8_t *_bits;
+    uint32_t *color_;
 };
 
 #endif

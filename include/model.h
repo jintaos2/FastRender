@@ -14,7 +14,6 @@
 #include <iostream>
 #include <vector>
 
-#include "shader.h"
 
 
 //---------------------------------------------------------------------

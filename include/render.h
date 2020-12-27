@@ -6,7 +6,6 @@
 #include <ctime>
 
 #include "bitmap.h"
-#include "shader.h"
 #include "model.h"
 
 class Render;
@@ -18,10 +17,33 @@ public:
     int w_, h_;
     int size;
     float *z_buffer;
+    std::vector<std::vector<float>> z_buffers; // hierarchical z_buffer
+    int levels;                                // 3, 2, 1, ...
+    std::vector<int> z_buffer_sizes;           // width of each z_buffer
+
     FrameBuffer(int w, int h) : w_(w), h_(h), size(w * h)
     {
         fb_ = new uint32_t[size];
         z_buffer = new float[size];
+
+        int block_size = 1; // lowest level
+        int level = 0;
+        int max_size = w > h ? w : h;
+        while (block_size < max_size)
+        {
+            block_size *= 2;
+            level++;
+        }
+        z_buffers.resize(level);
+        z_buffer_sizes.resize(level);
+        levels = level - 1;
+        for (int i = levels; i >= 0; --i)
+        { // level = 3, size=8, 7*7 , first = 4, 2 1
+            block_size /= 2;
+            int z_buffer_size = (max_size - 1) / block_size + 1;
+            z_buffer_sizes[i] = z_buffer_size;
+            z_buffers[i].resize(z_buffer_size * z_buffer_size);
+        }
     }
     ~FrameBuffer()
     {
@@ -43,6 +65,71 @@ public:
             fb_[i] = color;
             z_buffer[i] = FLT_MAX;
         }
+        for (int i = levels; i >= 0; --i)
+        {
+            for (int j = 0; j < z_buffers[i].size(); ++j)
+                z_buffers[i][j] = FLT_MAX;
+        }
+    }
+    inline bool visiable_box(int x1, int y1, int x2, int y2, float z)
+    {
+        if ((x1 < 0) | (x1 >= w_) | (x2 < 0) | (x2 >= w_) | (y1 < 0) | (y1 >= h_) | (y2 < 0) | (y2 >= h_))
+            return true;
+        for (int i = levels; i >= 0; --i) // 2, 1, 0
+        {
+            int x = x1 >> i;
+            int y = y1 >> i;
+            if (x != (x2 >> i) || y != (y2 >> i))
+            {
+                return true;
+            }
+            // z_buffer farest <= nearest z, then not visiable
+            else if (z_buffers[i][z_buffer_sizes[i] * y + x] <= z)
+                return false;
+        }
+        return true;
+    }
+    inline bool visiable_pixel_hierarchical(int x, int y, float z)
+    {
+        float z0 = z_buffers[0][z_buffer_sizes[0] * y + x];
+        return z < z0;
+    }
+    inline void set_pixel_hierarchical(int x, int y, float z, uint32_t color)
+    {
+        float &z0 = z_buffers[0][z_buffer_sizes[0] * y + x];
+        if (z < z0)
+        {
+            z0 = z;
+            fb_[y * w_ + x] = color;
+        }
+        else
+            return;
+        for (int i = 0; i < levels; ++i)
+        {
+            x &= (~1);
+            y &= (~1);
+            float z00 = get_z_hierarchical(i, x, y);
+            float z01 = get_z_hierarchical(i, x, y + 1);
+            float z10 = get_z_hierarchical(i, x + 1, y);
+            float z11 = get_z_hierarchical(i, x + 1, y + 1);
+            x = x >> 1;
+            y = y >> 1;
+            z_buffers[i + 1][z_buffer_sizes[i + 1] * y + x] = get_max4(z00, z01, z10, z11);
+        }
+    }
+    inline float get_z_hierarchical(int i, int x, int y)
+    {
+        return z_buffers[i][z_buffer_sizes[i] * y + x];
+    }
+    inline float get_max4(float a, float b, float c, float d)
+    {
+        if (a < b)
+            std::swap(a, b);
+        if (c < d)
+            std::swap(c, d);
+        if (a < c)
+            std::swap(a, c);
+        return a;
     }
     inline void set_pixel(int x, int y, float z, uint32_t color)
     {
@@ -71,13 +158,19 @@ struct Vertex2D
     int uv;
     int norm;
 };
+
 struct Face2D
 {
     Vertex2D v1, v2, v3;
+    float min_z;
     std::vector<Vec3f> *norms;
     std::vector<Vec2f> *uvs;
     Bitmap *diffuse_map;
 };
+bool sortFace2D(const Face2D &f1, const Face2D &f2)
+{
+    return f1.min_z < f2.min_z;
+}
 inline std::ostream &operator<<(std::ostream &os, const Vertex2D &a)
 {
     os << "x:" << a.x << " y:" << a.y << " z:" << a.z << "  norm_ID:" << a.norm << "  uv_ID:" << a.uv;
@@ -86,7 +179,6 @@ inline std::ostream &operator<<(std::ostream &os, const Vertex2D &a)
 
 struct Obj
 {
-public:
     Model *model;
     Mat4x4f coordinate = matrix_set_identity();
     float scale = 1;
@@ -108,7 +200,7 @@ public:
     Vec3f move_;
     std::vector<Vertex2D> vertex_; // transformed
     std::vector<Vec3f> norms_;     // transformed
-    std::vector<Face2D> *faces_;   // clipped
+    std::vector<Face2D> &faces_;   // clipped faces
 
     RenderObj(Render *render, Obj *obj);
 
@@ -118,10 +210,12 @@ public:
         rotate_ = transformm_rotate(transform) * (*obj_scale);              // 提取旋转矩阵.
         move_ = transformm_move(transform);                                 // 提取位移.
 
-        int mx = frame_buffer_->w_ / 2;
-        int my = frame_buffer_->h_ / 2;
-        float fx = frame_buffer_->w_ + 0.5;
-        float fy = frame_buffer_->h_ + 0.5;
+        int w_ = frame_buffer_->w_;
+        int h_ = frame_buffer_->h_;
+        int mx = w_ / 2;
+        int my = h_ / 2;
+        float fx = w_ + 0.5;
+        float fy = h_ + 0.5;
 
         // #pragma omp parallel for
         for (int i = 0; i < vertex_.size(); ++i)
@@ -153,8 +247,8 @@ public:
             float ay = v2.y - v1.y;
             float bx = v3.x - v2.x;
             float by = v3.y - v2.y;
-            // if ((v2.x - v1.x) * (v3.y - v2.y) - (v2.y - v1.y) * (v3.x - v2.x) > 0)
-            //     continue; // 背面剔除.
+            if ((v2.x - v1.x) * (v3.y - v2.y) - (v2.y - v1.y) * (v3.x - v2.x) > 0)
+                continue; // 背面剔除.
             v1.uv = p1.y;
             v1.norm = p1.z;
             v2.uv = p2.y;
@@ -171,7 +265,7 @@ public:
 
             // #pragma omp critical
             {
-                faces_->push_back({v1, v2, v3, &norms_, &model->_uv, model->_diffusemap});
+                faces_.push_back({v1, v2, v3, min3(v1.z, v2.z, v3.z), &norms_, &model->_uv, model->_diffusemap});
             }
         }
     }
@@ -188,6 +282,9 @@ public:
     std::vector<Face2D> faces_;
 
     clock_t timer;
+    int visiable_triangles;
+    int visiable_scanlines;
+    int visiable_pixels;
 
     Render(int w, int h) : fb(FrameBuffer(w, h)) {}
     ~Render()
@@ -300,19 +397,24 @@ public:
     void render()
     {
         timer = clock();
+        visiable_triangles = 0;
+        visiable_scanlines = 0;
+        visiable_pixels = 0;
         for (auto i : obj_renders)
             i->transform();
         faces_.clear();
         for (auto i : obj_renders)
             i->clip_faces();
-        std::cout << "time clip_faces = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\tn_faces: " << faces_.size() << std::endl;
+        std::sort(faces_.begin(), faces_.end(), sortFace2D);
+        std::cout << "\ntime clip_faces = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\tn_faces: " << faces_.size() << std::endl;
         timer = clock();
         // #pragma omp parallel for
         for (int i = 0; i < faces_.size(); ++i)
         {
             Draw_triangle(faces_[i]);
         }
-        std::cout << "time Draw_triangle = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms" << std::endl;
+        std::cout << "time Draw = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms" << std::endl;
+        std::cout << "draw_triangle:" << visiable_triangles << "\tdraw_line:" << visiable_scanlines << "\tdraw_pixel:" << visiable_pixels << std::endl;
     }
 
     struct Face2D_Coeff
@@ -337,6 +439,9 @@ public:
         int y2 = y2f + 0.5;
         int y3 = y3f + 0.5;
 
+        if (!fb.visiable_box(x1, min3(y1, y2, y3), x3, max3(y1, y2, y3), min3(z1, z2, z3)))
+            return;
+        visiable_triangles += 1;
         // std::cout << "x1 x2 x3:" << x1 << "  " << x2 << "  " << x3 << std::endl;
 
         float coeff1 = (y2f - y3f) * (x1f - x3f) + (x3f - x2f) * (y1f - y3f);
@@ -387,6 +492,7 @@ public:
     {
         if (x < 0 || x >= fb.w_ || y1 < y2)
             return;
+        visiable_scanlines += 1;
         for (int y = y2; y <= y1; ++y)
         {
             if (y < 0 || y >= fb.h_)
@@ -396,21 +502,21 @@ public:
             float frac2 = f.bx * x + f.by * y + f.bk;
             float frac3 = f.cx * x + f.cy * y + f.ck;
             float z_ = 1.0f / (frac1 + frac2 + frac3);
+
             // if (!fb.visiable(x, y, z_))
             //     continue;
+            if (!fb.visiable_pixel_hierarchical(x, y, z_))
+                continue;
 
-            uint32_t argb = 0;
             Vec2f uv1 = face.uvs->at(face.v1.uv);
             Vec2f uv2 = face.uvs->at(face.v2.uv);
             Vec2f uv3 = face.uvs->at(face.v3.uv);
-            Vec2f uv_pixel = (frac1 * uv1 + frac2 * uv2 + frac3 * uv3) * z_;
-            argb = face.diffuse_map->Sample2D(uv_pixel);
-            argb = ((argb & 0x000000ff) << 16) | ((argb & 0x00ff0000) >> 16) | ((argb & 0xff00ff00));
-            fb.set_pixel(x, y, z_, argb);
-            // fb.set_pixel(2,2, z_,uv_pixel.x );
+            float uv_x = (frac1 * uv1.x + frac2 * uv2.x + frac3 * uv3.x) * z_;
+            float uv_y = (frac1 * uv1.y + frac2 * uv2.y + frac3 * uv3.y) * z_;
+            fb.set_pixel_hierarchical(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
+            // fb.set_pixel(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
 
-            // std::cout << "fracs: " << frac1 << "  " << frac2 << "  " << frac3 << std::endl
-            // std::cout << "uv_coord " << uv_pixel << " x:" << x << " y:" << y << std::endl;
+            visiable_pixels += 1;
         }
     }
     inline void Draw_line(int x0, int y0, int x1, int y1, Face2D_Coeff &f, Face2D &face)
@@ -448,7 +554,7 @@ public:
     }
 };
 
-RenderObj::RenderObj(Render *render, Obj *obj)
+RenderObj::RenderObj(Render *render, Obj *obj) : faces_(render->faces_)
 {
     frame_buffer_ = &(render->fb);
     camera = &(render->camera);
@@ -457,11 +563,10 @@ RenderObj::RenderObj(Render *render, Obj *obj)
     model = obj->model;
     obj_coordinate = &(obj->coordinate);
     obj_scale = &(obj->scale);
-    faces_ = &render->faces_;
 
     vertex_.resize(model->_verts.size());
     norms_.resize(model->_norms.size());
-    faces_->reserve(faces_->size() + model->_faces.size());
+    faces_.reserve(faces_.size() + model->_faces.size());
 }
 
 #endif

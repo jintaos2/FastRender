@@ -10,7 +10,7 @@
 // 数学库：矢量定义
 //---------------------------------------------------------------------
 
-// 通用矢量：N 是矢量维度，T 为数据类型 .  
+// 通用矢量：N 是矢量维度，T 为数据类型 .
 template <size_t N, typename T>
 struct Vector
 {
@@ -423,7 +423,7 @@ inline T vector_length(const Vector<N, T> &a)
     return sqrt(vector_length_square(a));
 }
 
-// = |a| , 特化 float 类型，使用 sqrtf  
+// = |a| , 特化 float 类型，使用 sqrtf
 template <size_t N>
 inline float vector_length(const Vector<N, float> &a)
 {
@@ -454,7 +454,7 @@ inline T vector_cross(const Vector<2, T> &a, const Vector<2, T> &b)
     return a.x * b.y - a.y * b.x;
 }
 
-// 三维矢量叉乘，得到新矢量 . 
+// 三维矢量叉乘，得到新矢量 .
 template <typename T>
 inline Vector<3, T> vector_cross(const Vector<3, T> &a, const Vector<3, T> &b)
 {
@@ -550,7 +550,7 @@ inline std::ostream &operator<<(std::ostream &os, const Vector<N, T> &a)
     os << "]";
     return os;
 }
-  
+
 // 输出成字符串  .
 template <size_t N, typename T>
 inline std::string vector_repr(const Vector<N, T> &a)
@@ -647,7 +647,7 @@ struct Matrix
         return ret;
     }
 
-    // 取得转置矩阵 . 
+    // 取得转置矩阵 .
     inline Matrix<COL, ROW, T> Transpose() const
     {
         Matrix<COL, ROW, T> ret;
@@ -833,7 +833,7 @@ inline Vector<ROW, T> operator*(const Matrix<ROW, COL, T> &m, const Vector<COL, 
 // 数学库：行列式和逆矩阵等，光照计算有用
 //---------------------------------------------------------------------
 
-// 行列式求值：一阶 
+// 行列式求值：一阶. 
 template <typename T>
 inline T matrix_det(const Matrix<1, 1, T> &m)
 {
@@ -892,7 +892,7 @@ inline Matrix<N, N, T> matrix_invert(const Matrix<N, N, T> &m)
     T det = vector_dot(m.Row(0), ret.Col(0));
     return ret / det;
 }
- 
+
 // 输出到文本流 .
 template <size_t ROW, size_t COL, typename T>
 inline std::ostream &operator<<(std::ostream &os, const Matrix<ROW, COL, T> &m)
@@ -981,7 +981,7 @@ inline static Vec4f vector_from_color(uint32_t rgba)
     return out;
 }
 
-// matrix set to zero 
+// matrix set to zero
 inline static Mat4x4f matrix_set_zero()
 {
     Mat4x4f m;
@@ -1083,7 +1083,7 @@ inline static Vec3f transformm_move(Mat4x4f &m)
     return out;
 }
 // 齐次变换矩阵 .
-inline static Mat4x4f transformm_invert(Mat4x4f& in)
+inline static Mat4x4f transformm_invert(Mat4x4f &in)
 {
     Mat3x3f r = transformm_rotate(in);
     std::swap(r.m[0][1], r.m[1][0]);
@@ -1128,13 +1128,26 @@ inline static Mat4x4f matrix_set_perspective(float fovy, float aspect, float zn,
     return m;
 }
 
-template <class T>
-inline const T& max(const T& __a, const T& __b) {
-  return  __a < __b ? __b : __a;
-} 
-template <class T>
-inline const T& min(const T& __a, const T& __b) {
-  return  __a < __b ? __a : __b;
-} 
+template <typename T>
+inline const T &max(const T &__a, const T &__b)
+{
+    return __a < __b ? __b : __a;
+}
+template <typename T>
+inline const T &min(const T &__a, const T &__b)
+{
+    return __a < __b ? __a : __b;
+}
+
+template <typename T>
+inline T max3(T a, T b, T c)
+{
+    return max(max(a, b),c);
+}
+template <typename T>
+inline T min3(T a, T b, T c)
+{
+    return min(min(a, b),c);
+}
 
 #endif
