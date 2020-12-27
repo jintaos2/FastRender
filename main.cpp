@@ -49,13 +49,15 @@ int main()
     Obj test1(&model, {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 2);
     Obj test2(&model, {{1, 0, 0, 1}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
     Obj test4(&model, {{1, 0, 0, -2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
-    Obj test5(&model, {{1, 0, 0, 3}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
+    Obj test5(&model, {{1, 0, 0, 3}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1.5);
+    Obj test6(&model, {{1, 0, 0, -3}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1.5);
 
     r.add_obj(&test1);
     r.add_obj(&test2);
     r.add_obj(&test3);
     r.add_obj(&test4);
     r.add_obj(&test5);
+    r.add_obj(&test6);
 
     ////////////////////
     // GLFW
@@ -98,6 +100,7 @@ int main()
         test3.coordinate = test3.coordinate * matrix_set_rotate(1, 1, 0, -0.02);
         test4.coordinate = test4.coordinate * matrix_set_rotate(0, 0, 1, -0.05);
         test5.coordinate = test5.coordinate * matrix_set_rotate(0, 0, 1, 0.05);
+        test6.coordinate = test6.coordinate * matrix_set_rotate(1, 0, 0, 0.05);
         r.render();
         // std::cout << "===============================new frame ==========================\n";
         glPixelZoom(ZOOM, ZOOM);
