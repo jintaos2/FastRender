@@ -305,7 +305,6 @@ public:
     int32_t _h;
     int32_t _pitch;
     uint8_t *_bits;
-    uint32_t *color_;
 };
 
 #endif

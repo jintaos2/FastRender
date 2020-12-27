@@ -43,21 +43,34 @@ int main()
     mymodel._uv.push_back({0.99, 0.01});
     mymodel._uv.push_back({0.99, 0.99});
 
-    Obj test3(&mymodel, {{1, 0, 0, 2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 0.002);
+    Obj test3(&mymodel, {{1, 0, 0, 2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 0.001);
 
     Model model("res/diablo3_pose.obj");
-    Obj test1(&model, {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 2);
+    Obj test1(&model, {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
     Obj test2(&model, {{1, 0, 0, 1}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
-    Obj test4(&model, {{1, 0, 0, -2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
-    Obj test5(&model, {{1, 0, 0, 3}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1.5);
-    Obj test6(&model, {{1, 0, 0, -3}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1.5);
+
+    std::vector<Obj *> test_objs;
+    for (int i = 0; i < 5; ++i)
+    {
+        for (int j = 0; j < 9; ++j)
+        {
+            for (int k = 0; k < 6; ++k)
+            {
+                Mat4x4f pose = {{1, 0, 0, (float)(j - 4)}, {0, 1, 0, (float)(i - 2)}, {0, 0, 1, (float)k * 3}, {0, 0, 0, 1}};
+                Obj *a = new Obj(&model, pose, 0.8+0.4*(k+1));
+                test_objs.push_back(a);
+            }
+        }
+    }
 
     r.add_obj(&test1);
     r.add_obj(&test2);
     r.add_obj(&test3);
-    r.add_obj(&test4);
-    r.add_obj(&test5);
-    r.add_obj(&test6);
+
+    for (int i = 0; i < test_objs.size(); ++i)
+    {
+        r.add_obj(test_objs[i]);
+    }
 
     ////////////////////
     // GLFW
@@ -86,21 +99,23 @@ int main()
         else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
             r.move_camera_x(0.1);
         else if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
-            r.rotate_camera_up(-0.1);
+            r.rotate_camera_up(0.05);
         else if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
-            r.rotate_camera_up(0.1);
+            r.rotate_camera_up(-0.05);
         else if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
-            r.rotate_camera_left(0.1);
+            r.rotate_camera_left(0.05);
         else if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
-            r.rotate_camera_left(-0.1);
+            r.rotate_camera_left(-0.05);
 
         r.fb.fill(0xffffffff);
         test1.coordinate = test1.coordinate * matrix_set_rotate(0, 1, 0, 0.05);
         test2.coordinate = test2.coordinate * matrix_set_rotate(0, 1, 0, -0.05);
         test3.coordinate = test3.coordinate * matrix_set_rotate(1, 1, 0, -0.02);
-        test4.coordinate = test4.coordinate * matrix_set_rotate(0, 0, 1, -0.05);
-        test5.coordinate = test5.coordinate * matrix_set_rotate(0, 0, 1, 0.05);
-        test6.coordinate = test6.coordinate * matrix_set_rotate(1, 0, 0, 0.05);
+
+        for (int i = 0; i < test_objs.size(); ++i)
+        {
+            test_objs[i]->coordinate = test_objs[i]->coordinate * matrix_set_rotate(i, 1, -i, 0.05 - i / 300.0);
+        }
         r.render();
         // std::cout << "===============================new frame ==========================\n";
         glPixelZoom(ZOOM, ZOOM);
