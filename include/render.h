@@ -65,11 +65,11 @@ public:
             fb_[i] = color;
             z_buffer[i] = FLT_MAX;
         }
-        // for (int i = levels; i >= 0; --i)
-        // {
-        //     for (int j = 0; j < z_buffers[i].size(); ++j)
-        //         z_buffers[i][j] = FLT_MAX;
-        // }
+        for (int i = levels; i >= 0; --i)
+        {
+            for (int j = 0; j < z_buffers[i].size(); ++j)
+                z_buffers[i][j] = FLT_MAX;
+        }
     }
     inline bool visiable_box(int x1, int y1, int x2, int y2, float z)
     {
@@ -440,8 +440,8 @@ public:
         int y2 = y2f + 0.5;
         int y3 = y3f + 0.5;
 
-        // if (!fb.visiable_box(x1, min3(y1, y2, y3), x3, max3(y1, y2, y3), min3(z1, z2, z3)))
-        //     return;
+        if (!fb.visiable_box(x1, min3(y1, y2, y3), x3, max3(y1, y2, y3), min3(z1, z2, z3)))
+            return;
         visiable_triangles += 1;
 
         float coeff1 = (y2f - y3f) * (x1f - x3f) + (x3f - x2f) * (y1f - y3f);
@@ -502,18 +502,18 @@ public:
             float frac3 = f.cx * x + f.cy * y + f.ck;
             float z_ = 1.0f / (frac1 + frac2 + frac3);
 
-            if (!fb.visiable(x, y, z_))
-                continue;
-            // if (!fb.visiable_pixel_hierarchical(x, y, z_))
+            // if (!fb.visiable(x, y, z_))
             //     continue;
+            if (!fb.visiable_pixel_hierarchical(x, y, z_))
+                continue;
 
             Vec2f uv1 = face.uvs->at(face.v1.uv);
             Vec2f uv2 = face.uvs->at(face.v2.uv);
             Vec2f uv3 = face.uvs->at(face.v3.uv);
             float uv_x = (frac1 * uv1.x + frac2 * uv2.x + frac3 * uv3.x) * z_;
             float uv_y = (frac1 * uv1.y + frac2 * uv2.y + frac3 * uv3.y) * z_;
-            // fb.set_pixel_hierarchical(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
-            fb.set_pixel(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
+            fb.set_pixel_hierarchical(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
+            // fb.set_pixel(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
 
             visiable_pixels += 1;
         }
