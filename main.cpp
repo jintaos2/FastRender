@@ -8,7 +8,7 @@
 int main()
 {
     Render r(SCR_WIDTH, SCR_HEIGHT);
-    r.set_camera({{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, -6.0}, {0, 0, 0, 1}}, 1400.0);
+    r.set_camera({{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, -7.0}, {0, 0, 0, 1}}, 1400.0);
 
     Bitmap mybitmap(4, 4);
     mybitmap.SetPixel(0, 0, 0xff0000ff);
@@ -29,10 +29,10 @@ int main()
     mybitmap.SetPixel(3, 3, 0xff000000);
     Model mymodel("xxx");
     mymodel._diffusemap = &mybitmap;
-    mymodel._verts.push_back({-300, -300, -300});
-    mymodel._verts.push_back({300, -300, -300});
-    mymodel._verts.push_back({-300, -300, 300});
-    mymodel._verts.push_back({-300, 300, -300});
+    mymodel._verts.push_back({-300, -300, -1});
+    mymodel._verts.push_back({300, -300, -1});
+    mymodel._verts.push_back({-300, -300, 1});
+    mymodel._verts.push_back({-300, 300, -1});
     mymodel._faces.push_back({{0, 2, 0}, {1, 2, 0}, {2, 2, 0}});
     mymodel._faces.push_back({{0, 1, 0}, {1, 1, 0}, {3, 1, 0}});
     mymodel._faces.push_back({{0, 0, 0}, {2, 0, 0}, {3, 0, 0}});
@@ -43,11 +43,11 @@ int main()
     mymodel._uv.push_back({0.99, 0.01});
     mymodel._uv.push_back({0.99, 0.99});
 
-    Obj test3(&mymodel, {{1, 0, 0, 2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 0.002);
+    Obj test3(&mymodel, {{1, 0, 0, 0.3}, {0, 1, 0, 0.6}, {0, 0, 1, -5}, {0, 0, 0, 1}}, 0.004);
 
     Model model("res/diablo3_pose.obj");
-    Obj test1(&model, {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
-    Obj test2(&model, {{1, 0, 0, 1}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
+    Obj test1(&model, {{1, 0, 0, -1}, {0, 1, 0, 0}, {0, 0, 1, -3}, {0, 0, 0, 1}}, 1);
+    Obj test2(&model, {{1, 0, 0, 1}, {0, 1, 0, 0}, {0, 0, 1, -3}, {0, 0, 0, 1}}, 1);
 
     std::vector<Obj *> test_objs;
     for (int i = 0; i < 5; ++i)
@@ -110,7 +110,7 @@ int main()
         r.fb.fill(0xffffffff);
         test1.coordinate = test1.coordinate * matrix_set_rotate(0, 1, 0, 0.05);
         test2.coordinate = test2.coordinate * matrix_set_rotate(0, 1, 0, -0.05);
-        test3.coordinate = test3.coordinate * matrix_set_rotate(1, 1, 0, -0.02);
+        test3.coordinate = test3.coordinate * matrix_set_rotate(0, 0, 1, -0.02);
 
         for (int i = 0; i < test_objs.size(); ++i)
         {
