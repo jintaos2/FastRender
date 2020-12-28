@@ -442,25 +442,22 @@ public:
         visiable_triangles += 1;
 
         Face2D face = *ff;
-        Vertex2D v1 = face.v1;
-        Vertex2D v2 = face.v2;
-        Vertex2D v3 = face.v3;
-        // sort v1, v2, v3
-        if (v1.x > v2.x)
-            std::swap(v1, v2);
-        if (v1.x > v3.x)
-            std::swap(v1, v3);
-        if (v2.x > v3.x)
-            std::swap(v2, v3);
-        float x1f = v1.x;
-        float x2f = v2.x;
-        float x3f = v3.x;
-        float y1f = v1.y;
-        float y2f = v2.y;
-        float y3f = v3.y;
-        float z1 = v1.z;
-        float z2 = v2.z;
-        float z3 = v3.z;
+        // sort v1, v2, v3face.
+        if (face.v1.x > face.v2.x)
+            std::swap(face.v1, face.v2);
+        if (face.v1.x > face.v3.x)
+            std::swap(face.v1, face.v3);
+        if (face.v2.x > face.v3.x)
+            std::swap(face.v2, face.v3);
+        float x1f = face.v1.x;
+        float x2f = face.v2.x;
+        float x3f = face.v3.x;
+        float y1f = face.v1.y;
+        float y2f = face.v2.y;
+        float y3f = face.v3.y;
+        float z1 = face.v1.z;
+        float z2 = face.v2.z;
+        float z3 = face.v3.z;
         int x1 = x1f + 0.5;
         int x2 = x2f + 0.5;
         int x3 = x3f + 0.5;
@@ -536,7 +533,7 @@ public:
             Vec2f uv3 = face.uvs->at(face.v3.uv);
             float uv_x = (frac1 * uv1.x + frac2 * uv2.x + frac3 * uv3.x) * z_;
             float uv_y = (frac1 * uv1.y + frac2 * uv2.y + frac3 * uv3.y) * z_;
-            fb.set_pixel_hierarchical(x, y, z_, face.diffuse_map->Sample2D(uv_x, uv_y));
+            fb.set_pixel_hierarchical(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
             // fb.set_pixel(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
 
             visiable_pixels += 1;
