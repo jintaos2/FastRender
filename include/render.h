@@ -20,6 +20,7 @@ public:
     std::vector<std::vector<float>> z_buffers; // hierarchical z_buffer
     int levels;                                // 3, 2, 1, ...
     std::vector<int> z_buffer_sizes;           // width of each z_buffer
+    int size0;
 
     FrameBuffer(int w, int h) : w_(w), h_(h), size(w * h)
     {
@@ -44,6 +45,7 @@ public:
             z_buffer_sizes[i] = z_buffer_size;
             z_buffers[i].resize(z_buffer_size * z_buffer_size);
         }
+        size0 = z_buffer_sizes[0];
     }
     ~FrameBuffer()
     {
@@ -73,8 +75,6 @@ public:
     }
     inline bool visiable_box(int x1, int y1, int x2, int y2, float z)
     {
-        if ((x1 < 0) | (x1 >= w_) | (x2 < 0) | (x2 >= w_) | (y1 < 0) | (y1 >= h_) | (y2 < 0) | (y2 >= h_))
-            return true;
         for (int i = levels; i >= 0; --i) // 2, 1, 0
         {
             int x = x1 >> i;
@@ -91,8 +91,7 @@ public:
     }
     inline bool visiable_pixel_hierarchical(int x, int y, float z)
     {
-        float z0 = z_buffers[0][z_buffer_sizes[0] * y + x];
-        return z < z0;
+        return z < z_buffers[0].at(size0 * y + x);
     }
     inline void set_pixel_hierarchical(int x, int y, float z, uint32_t color)
     {
@@ -219,7 +218,6 @@ public:
         float fx = w_ + 0.5;
         float fy = h_ + 0.5;
 
-        // #pragma omp parallel for
         for (int i = 0; i < vertex_.size(); ++i)
         {
             Vec3f v = rotate_ * (model->_verts[i]) + move_;                 // 顶点坐标转换.
@@ -405,21 +403,32 @@ public:
 
     void render()
     {
+        std::cout << "=================================== new frame =====\n";
         timer = clock();
         visiable_triangles = 0;
         visiable_scanlines = 0;
         visiable_pixels = 0;
-        for (auto i : obj_renders)
-            i->transform();
+        int N = obj_renders.size();
+        for (int i = 0; i < N; ++i)
+        {
+            obj_renders[i]->transform();
+        }
+        std::cout << "time transform = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\n";
+        timer = clock();
         faces_.clear();
-        for (auto i : obj_renders)
-            i->clip_faces();
+        for (int i = 0; i < N; ++i)
+        {
+            obj_renders[i]->clip_faces();
+        }
 
-        std::sort(faces_.begin(), faces_.end(), sortFace2D);
-        std::cout << "\ntime clip_faces = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\tn_faces: " << faces_.size() << std::endl;
+        std::cout << "time clip_faces = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\tn_faces: " << faces_.size() << std::endl;
         timer = clock();
 
-        // #pragma omp parallel for
+        std::sort(faces_.begin(), faces_.end(), sortFace2D);
+        std::cout << "time sort = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\n";
+        timer = clock();
+
+        #pragma omp parallel for
         for (int i = 0; i < faces_.size(); ++i)
         {
             Draw_triangle(faces_[i]);
@@ -433,14 +442,14 @@ public:
     struct Face2D_Coeff
     {
         float ax, ay, ak, bx, by, bk, cx, cy, ck;
+        float dx, dy;
     };
     inline void Draw_triangle(FaceID face_id)
     {
-        Face2D * ff = face_id.f;
+        Face2D *ff = face_id.f;
         if (!fb.visiable_box(ff->x1, ff->y1, ff->x2, ff->y2, face_id.min_z))
             return;
         visiable_triangles += 1;
-
         Face2D face = *ff;
         // sort v1, v2, v3face.
         if (face.v1.x > face.v2.x)
@@ -465,19 +474,28 @@ public:
         int y2 = y2f + 0.5;
         int y3 = y3f + 0.5;
 
-        float coeff1 = (y2f - y3f) * (x1f - x3f) + (x3f - x2f) * (y1f - y3f);
-        Face2D_Coeff f = {(y2f - y3f) / coeff1 / z1,
-                          (x3f - x2f) / coeff1 / z1,
-                          (x2f * y3f - x3f * y2f) / coeff1 / z1,
-                          (y3f - y1f) / coeff1 / z2,
-                          (x1f - x3f) / coeff1 / z2,
-                          (x3f * y1f - x1f * y3f) / coeff1 / z2,
-                          (y1f - y2f) / coeff1 / z3,
-                          (x2f - x1f) / coeff1 / z3,
-                          (x1f * y2f - x2f * y1f) / coeff1 / z3};
-
         int c = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1); // up, down, line
-        if (c < 0)                                             // up
+        if (c == 0)
+            return;
+        float coeff1 = (y2f - y3f) * (x1f - x3f) + (x3f - x2f) * (y1f - y3f);
+        // y2x1 - y2x3-y3x1+  + y1x3   -y1x2 + y3x2
+        float dz23 = (z2 - z3) / coeff1;
+        float dz12 = (z1 - z2) / coeff1;
+        float cz11 = coeff1 * z1;
+        float cz12 = coeff1 * z2;
+        float cz13 = coeff1 * z3;
+        Face2D_Coeff f = {(y2f - y3f) / cz11,
+                          (x3f - x2f) / cz11,
+                          (x2f * y3f - x3f * y2f) / cz11,
+                          (y3f - y1f) / cz12,
+                          (x1f - x3f) / cz12,
+                          (x3f * y1f - x1f * y3f) / cz12,
+                          (y1f - y2f) / cz13,
+                          (x2f - x1f) / cz13,
+                          (x1f * y2f - x2f * y1f) / cz13,
+                          (y2f - y1f) * dz23 + (y2f - y3f) * dz12,
+                          (x1f - x2f) * dz23 + (x3f - x2f) * dz12};
+        if (c < 0) // up
         {
             Bresenham l1(x1, y1, x3, y3, false);
             Bresenham l2(x1, y1, x2, y2, true);
@@ -510,24 +528,31 @@ public:
     // y1 >= y2
     inline void Draw_scanline(int x, int y1, int y2, Face2D_Coeff &f, Face2D &face)
     {
-        if (x < 0 || x >= fb.w_ || y1 < y2)
+        if (x < 0 || x >= fb.w_)
+            return;
+        y1 = between(0, fb.h_ - 1, y1);
+        y2 = between(0, fb.h_ - 1, y2);
+
+        Vertex2D v1 = face.v1;
+        float z2 = (x - v1.x) * f.dx + (y2 - v1.y) * f.dy + v1.z;
+        float z1 = z2 + (y1 - y2) * f.dy;
+        if (!fb.visiable_box(x, y1, x, y2, min(z1, z2)))
             return;
         visiable_scanlines += 1;
+
         for (int y = y2; y <= y1; ++y)
         {
-            if (y < 0 || y >= fb.h_)
-                continue;
-
-            float frac1 = f.ax * x + f.ay * y + f.ak;
-            float frac2 = f.bx * x + f.by * y + f.bk;
-            float frac3 = f.cx * x + f.cy * y + f.ck;
-            float z_ = 1.0f / (frac1 + frac2 + frac3);
-
+            float z_ = (y - y2) * f.dy + z2;
             // if (!fb.visiable(x, y, z_))
             //     continue;
             if (!fb.visiable_pixel_hierarchical(x, y, z_))
                 continue;
+            visiable_pixels += 1;
 
+            float frac1 = f.ax * x + f.ay * y + f.ak;
+            float frac2 = f.bx * x + f.by * y + f.bk;
+            float frac3 = f.cx * x + f.cy * y + f.ck;
+            // float z_ = 1.0f / (frac1 + frac2 + frac3);
             Vec2f uv1 = face.uvs->at(face.v1.uv);
             Vec2f uv2 = face.uvs->at(face.v2.uv);
             Vec2f uv3 = face.uvs->at(face.v3.uv);
@@ -535,8 +560,6 @@ public:
             float uv_y = (frac1 * uv1.y + frac2 * uv2.y + frac3 * uv3.y) * z_;
             fb.set_pixel_hierarchical(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
             // fb.set_pixel(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
-
-            visiable_pixels += 1;
         }
     }
     inline void Draw_line(int x0, int y0, int x1, int y1, Face2D_Coeff &f, Face2D &face)
@@ -585,6 +608,7 @@ RenderObj::RenderObj(Render *render, Obj *obj) : w_(render->fb.w_), h_(render->f
     vertex_.resize(model->_verts.size());
     norms_.resize(model->_norms.size());
     faces_.reserve(model->_faces.size());
+    face_ids.reserve(model->_faces.size() + face_ids.size());
 }
 
 #endif

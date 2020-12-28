@@ -43,7 +43,7 @@ int main()
     mymodel._uv.push_back({0.99, 0.01});
     mymodel._uv.push_back({0.99, 0.99});
 
-    Obj test3(&mymodel, {{1, 0, 0, 2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 0.001);
+    Obj test3(&mymodel, {{1, 0, 0, 2}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 0.002);
 
     Model model("res/diablo3_pose.obj");
     Obj test1(&model, {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, 1);
