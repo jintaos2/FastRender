@@ -232,7 +232,6 @@ public:
         x1 = x1 > _w - 2 ? _w - 2 : x1;
         y1 = y1 < 0 ? 0 : y1;
         y1 = y1 > _h - 2 ? _h - 2 : y1;
-        return frac1 + frac2 + f00 + f01 + f10 + f11 + x1 + y1;
         uint32_t c00 = get_color(x1, y1);
         uint32_t c10 = get_color(x1 + 1, y1);
         uint32_t c01 = get_color(x1, y1 + 1);
@@ -240,7 +239,6 @@ public:
         uint32_t B = (c00 & 0x000000ff) * f00 + (c01 & 0x000000ff) * f01 + (c10 & 0x000000ff) * f10 + (c11 & 0x000000ff) * f11;
         uint32_t G = (c00 & 0x0000ff00) * f00 + (c01 & 0x0000ff00) * f01 + (c10 & 0x0000ff00) * f10 + (c11 & 0x0000ff00) * f11;
         uint32_t R = (c00 & 0x00ff0000) * f00 + (c01 & 0x00ff0000) * f01 + (c10 & 0x00ff0000) * f10 + (c11 & 0x00ff0000) * f11;
-        return c11;
         return (B & 0x000000ff) << 16 | (G & 0x0000ff00) | (R & 0x00ff0000) >> 16 | 0xff000000;
     }
     inline uint32_t get_color(int x, int y)

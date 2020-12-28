@@ -158,16 +158,20 @@ struct Vertex2D
     int uv;
     int norm;
 };
-
 struct Face2D
 {
     Vertex2D v1, v2, v3;
-    float min_z;
+    int x1, y1, x2, y2; // AABB bounding box
     std::vector<Vec3f> *norms;
     std::vector<Vec2f> *uvs;
     Bitmap *diffuse_map;
 };
-bool sortFace2D(const Face2D &f1, const Face2D &f2)
+struct FaceID
+{
+    float min_z;
+    Face2D *f;
+};
+bool sortFace2D(const FaceID &f1, const FaceID &f2)
 {
     return f1.min_z < f2.min_z;
 }
@@ -188,30 +192,28 @@ struct Obj
 class RenderObj
 {
 public:
-    FrameBuffer *frame_buffer_;
+    int w_, h_; // size of screen
+
     Mat4x4f *camera;
     float *camera_scale;
-
-    Model *model;
     Mat4x4f *obj_coordinate;
     float *obj_scale;
 
-    Mat3x3f rotate_;
-    Vec3f move_;
+    Model *model;
+
     std::vector<Vertex2D> vertex_; // transformed
     std::vector<Vec3f> norms_;     // transformed
-    std::vector<Face2D> &faces_;   // clipped faces
+    std::vector<Face2D> faces_;    // clipped faces
+    std::vector<FaceID> &face_ids;
 
     RenderObj(Render *render, Obj *obj);
 
     void transform()
     {
         Mat4x4f transform = transformm_invert(*camera) * (*obj_coordinate); // 转换到相机空间.
-        rotate_ = transformm_rotate(transform) * (*obj_scale);              // 提取旋转矩阵.
-        move_ = transformm_move(transform);                                 // 提取位移.
+        Mat3x3f rotate_ = transformm_rotate(transform) * (*obj_scale);      // 提取旋转矩阵.
+        Vec3f move_ = transformm_move(transform);                           // 提取位移.
 
-        int w_ = frame_buffer_->w_;
-        int h_ = frame_buffer_->h_;
         int mx = w_ / 2;
         int my = h_ / 2;
         float fx = w_ + 0.5;
@@ -221,18 +223,22 @@ public:
         for (int i = 0; i < vertex_.size(); ++i)
         {
             Vec3f v = rotate_ * (model->_verts[i]) + move_;                 // 顶点坐标转换.
-            float z = v.z / (*camera_scale);                                //
+            float z = v.z / (*camera_scale);                                // 全局放大.
             Vertex2D vertex = {v.x / z + mx, v.y / z + my, z, false, 0, 0}; // 透视投影.
-            vertex._out = vertex.z < 0.001 || vertex.x < -0.5 ||
-                          vertex.y < -0.5 || vertex.x > fx || vertex.y > fy;
+            vertex._out = (vertex.z < 0.001) | (vertex.x < -0.5) |
+                          (vertex.y < -0.5) | (vertex.x > fx) |
+                          (vertex.y > fy);
             vertex_[i] = vertex;
         }
         for (int i = 0; i < norms_.size(); ++i)
+        {
             norms_[i] = rotate_ * (model->_norms[i]); // 顶点法向量转换.
+        }
     }
     void clip_faces()
     {
         // #pragma omp parallel for
+        faces_.clear();
         for (int i = 0; i < model->_faces.size(); ++i)
         {
             Vec3i p1 = model->_faces[i][0]; // 顶点索引 / 纹理坐标索引 / 顶点法向量索引.
@@ -241,32 +247,35 @@ public:
             Vertex2D v1 = vertex_[p1.x];
             Vertex2D v2 = vertex_[p2.x];
             Vertex2D v3 = vertex_[p3.x];
+
+            // 视锥剔除.
             if (v1._out && v2._out && v3._out)
-                continue; // v2.y - v1.y      v2.x - v1.x
-            float ax = v2.x - v1.x;
-            float ay = v2.y - v1.y;
-            float bx = v3.x - v2.x;
-            float by = v3.y - v2.y;
+                continue;
+            // 背面剔除.
             // if ((v2.x - v1.x) * (v3.y - v2.y) - (v2.y - v1.y) * (v3.x - v2.x) > 0)
-            //     continue; // 背面剔除.
+            //     continue;
+
             v1.uv = p1.y;
             v1.norm = p1.z;
             v2.uv = p2.y;
             v2.norm = p2.z;
             v3.uv = p3.y;
             v3.norm = p3.z;
-            // sort p1, p2, p3
-            if (v1.x > v2.x)
-                std::swap(v1, v2);
-            if (v1.x > v3.x)
-                std::swap(v1, v3);
-            if (v2.x > v3.x)
-                std::swap(v2, v3);
-
-            // #pragma omp critical
-            {
-                faces_.push_back({v1, v2, v3, min3(v1.z, v2.z, v3.z), &norms_, &model->_uv, model->_diffusemap});
-            }
+            // 四舍五入.
+            int x1 = v1.x + 0.5;
+            int x2 = v2.x + 0.5;
+            int x3 = v3.x + 0.5;
+            int y1 = v1.y + 0.5;
+            int y2 = v2.y + 0.5;
+            int y3 = v3.y + 0.5;
+            sort3(x1, x2, x3);
+            sort3(y1, y2, y3);
+            x1 = between(0, w_, x1);
+            x3 = between(0, w_, x3);
+            y1 = between(0, h_, y1);
+            y3 = between(0, h_, y3);
+            faces_.push_back({v1, v2, v3, x1, y1, x3, y3, &norms_, &model->_uv, model->_diffusemap});
+            face_ids.push_back({min3(v1.z, v2.z, v3.z), &faces_.back()});
         }
     }
 };
@@ -274,18 +283,17 @@ public:
 class Render
 {
 public:
-    FrameBuffer fb;
     Mat4x4f camera = matrix_set_identity();
     float camera_scale = 1;
+    FrameBuffer fb;
 
     std::vector<RenderObj *> obj_renders;
+    std::vector<FaceID> faces_;
 
     clock_t timer;
     int visiable_triangles;
     int visiable_scanlines;
     int visiable_pixels;
-
-    std::vector<Face2D> faces_;
 
     Render(int w, int h) : fb(FrameBuffer(w, h)) {}
     ~Render()
@@ -406,15 +414,19 @@ public:
         faces_.clear();
         for (auto i : obj_renders)
             i->clip_faces();
+
         std::sort(faces_.begin(), faces_.end(), sortFace2D);
         std::cout << "\ntime clip_faces = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\tn_faces: " << faces_.size() << std::endl;
         timer = clock();
+
         // #pragma omp parallel for
         for (int i = 0; i < faces_.size(); ++i)
         {
             Draw_triangle(faces_[i]);
         }
+
         std::cout << "time Draw = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms" << std::endl;
+
         std::cout << "draw_triangle:" << visiable_triangles << "\tdraw_line:" << visiable_scanlines << "\tdraw_pixel:" << visiable_pixels << std::endl;
     }
 
@@ -422,27 +434,39 @@ public:
     {
         float ax, ay, ak, bx, by, bk, cx, cy, ck;
     };
-    inline void Draw_triangle(Face2D &face)
+    inline void Draw_triangle(FaceID face_id)
     {
-        float x1f = face.v1.x;
-        float x2f = face.v2.x;
-        float x3f = face.v3.x;
-        float y1f = face.v1.y;
-        float y2f = face.v2.y;
-        float y3f = face.v3.y;
-        float z1 = face.v1.z;
-        float z2 = face.v2.z;
-        float z3 = face.v3.z;
+        Face2D * ff = face_id.f;
+        if (!fb.visiable_box(ff->x1, ff->y1, ff->x2, ff->y2, face_id.min_z))
+            return;
+        visiable_triangles += 1;
+
+        Face2D face = *ff;
+        Vertex2D v1 = face.v1;
+        Vertex2D v2 = face.v2;
+        Vertex2D v3 = face.v3;
+        // sort v1, v2, v3
+        if (v1.x > v2.x)
+            std::swap(v1, v2);
+        if (v1.x > v3.x)
+            std::swap(v1, v3);
+        if (v2.x > v3.x)
+            std::swap(v2, v3);
+        float x1f = v1.x;
+        float x2f = v2.x;
+        float x3f = v3.x;
+        float y1f = v1.y;
+        float y2f = v2.y;
+        float y3f = v3.y;
+        float z1 = v1.z;
+        float z2 = v2.z;
+        float z3 = v3.z;
         int x1 = x1f + 0.5;
         int x2 = x2f + 0.5;
         int x3 = x3f + 0.5;
         int y1 = y1f + 0.5;
         int y2 = y2f + 0.5;
         int y3 = y3f + 0.5;
-
-        if (!fb.visiable_box(x1, min3(y1, y2, y3), x3, max3(y1, y2, y3), min3(z1, z2, z3)))
-            return;
-        visiable_triangles += 1;
 
         float coeff1 = (y2f - y3f) * (x1f - x3f) + (x3f - x2f) * (y1f - y3f);
         Face2D_Coeff f = {(y2f - y3f) / coeff1 / z1,
@@ -512,7 +536,7 @@ public:
             Vec2f uv3 = face.uvs->at(face.v3.uv);
             float uv_x = (frac1 * uv1.x + frac2 * uv2.x + frac3 * uv3.x) * z_;
             float uv_y = (frac1 * uv1.y + frac2 * uv2.y + frac3 * uv3.y) * z_;
-            fb.set_pixel_hierarchical(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
+            fb.set_pixel_hierarchical(x, y, z_, face.diffuse_map->Sample2D(uv_x, uv_y));
             // fb.set_pixel(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
 
             visiable_pixels += 1;
@@ -553,9 +577,8 @@ public:
     }
 };
 
-RenderObj::RenderObj(Render *render, Obj *obj) : faces_(render->faces_)
+RenderObj::RenderObj(Render *render, Obj *obj) : w_(render->fb.w_), h_(render->fb.h_), face_ids(render->faces_)
 {
-    frame_buffer_ = &(render->fb);
     camera = &(render->camera);
     camera_scale = &(render->camera_scale);
     model = obj->model;
@@ -564,7 +587,7 @@ RenderObj::RenderObj(Render *render, Obj *obj) : faces_(render->faces_)
 
     vertex_.resize(model->_verts.size());
     norms_.resize(model->_norms.size());
-    faces_.reserve(faces_.size() + model->_faces.size());
+    faces_.reserve(model->_faces.size());
 }
 
 #endif
