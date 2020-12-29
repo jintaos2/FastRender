@@ -17,12 +17,14 @@ public:
     int w_, h_;
     int size;
     float *z_buffer;
-    float ** zbs;
-    
-    std::vector<std::vector<float>> z_buffers; // hierarchical z_buffer
-    int levels;                                // 3, 2, 1, ...
-    std::vector<int> z_buffer_sizes;           // width of each z_buffer
+    float **z_buffers;
+    int *z_buffer_sizes;
+    float *z_buffer0;
     int size0;
+    int levels; // 3, 2, 1, ...
+
+    // std::vector<std::vector<float>> z_buffers; // hierarchical z_buffer
+    // std::vector<int> z_buffer_sizes;           // width of each z_buffer
 
     FrameBuffer(int w, int h) : w_(w), h_(h), size(w * h)
     {
@@ -37,17 +39,20 @@ public:
             block_size *= 2;
             level++;
         }
-        z_buffers.resize(level);
-        z_buffer_sizes.resize(level);
+        z_buffers = new float *[level];
+        z_buffer_sizes = new int[level];
+        // z_buffers.resize(level);
+        // z_buffer_sizes.resize(level);
         levels = level - 1;
         for (int i = levels; i >= 0; --i)
         { // level = 3, size=8, 7*7 , first = 4, 2 1
             block_size /= 2;
             int z_buffer_size = (max_size - 1) / block_size + 1;
             z_buffer_sizes[i] = z_buffer_size;
-            z_buffers[i].resize(z_buffer_size * z_buffer_size);
+            z_buffers[i] = new float[z_buffer_size * z_buffer_size];
         }
         size0 = z_buffer_sizes[0];
+        z_buffer0 = z_buffers[0];
     }
     ~FrameBuffer()
     {
@@ -61,6 +66,13 @@ public:
             delete[] z_buffer;
             z_buffer = NULL;
         }
+        for (int i = 0; i <= levels; ++i)
+        {
+            if (z_buffers[i])
+                delete[] z_buffers[i];
+            delete[] z_buffers;
+            z_buffers = NULL;
+        }
     }
     inline void fill(uint32_t color)
     {
@@ -71,7 +83,7 @@ public:
         }
         for (int i = levels; i >= 0; --i)
         {
-            for (int j = 0; j < z_buffers[i].size(); ++j)
+            for (int j = 0; j < z_buffer_sizes[i] * z_buffer_sizes[i]; ++j)
                 z_buffers[i][j] = FLT_MAX;
         }
     }
@@ -127,12 +139,12 @@ public:
     }
     inline bool visiable_pixel_hierarchical(int x, int y, float z)
     {
-        return z < z_buffers[0].at(size0 * y + x);
+        return z < z_buffer0[size0 * y + x];
     }
     inline void set_pixel_hierarchical(int x, int y, float z, uint32_t color)
     {
         fb_[y * w_ + x] = color;
-        z_buffers[0].at(size0 * y + x) = z;
+        z_buffer0[size0 * y + x] = z;
         for (int i = 0; i < levels; ++i)
         {
             x &= (~1);
@@ -231,7 +243,7 @@ public:
     float *obj_scale;
 
     Model *model;
-    std::vector<int> z_buffer_sizes;
+    int* z_buffer_sizes;
     std::vector<Vertex2D> vertex_; // transformed
     std::vector<Vec3f> norms_;     // transformed
     std::vector<Face2D> faces_;    // clipped faces
@@ -507,7 +519,7 @@ public:
     };
     inline void Draw_triangle(FaceID &face_id)
     {
-        std::vector<float> &zb = fb.z_buffers[face_id.i];
+        float* zb = fb.z_buffers[face_id.i];
         if (!(face_id.z1 < zb[face_id.idx1] || face_id.z1 < zb[face_id.idx2] ||
               face_id.z1 < zb[face_id.idx3] || face_id.z1 < zb[face_id.idx4]))
             return;
