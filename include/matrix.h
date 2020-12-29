@@ -1143,4 +1143,10 @@ inline T between(T xmin, T xmax, T x)
     return min(max(xmin, x), xmax);
 }
 
+template <typename T>
+inline bool less(T a, T b, T error)
+{
+    return (b - a) > error;
+}
+
 #endif
