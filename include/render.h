@@ -459,15 +459,7 @@ public:
 
         std::cout << "time push_back = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\tn_faces: " << faces_.size() << std::endl;
         timer = clock();
-        int n_split = faces_.size() / 16 + 1;
-#pragma omp parallel for num_threads(16)
-        for (int i = 0; i < 16; ++i)
-        {
-            std::vector<FaceID>::iterator it = faces_.begin() + (i + 1) * n_split;
-            if (it > faces_.end())
-                it = faces_.end();
-            std::sort(faces_.begin() + i * n_split, it);
-        }
+
         std::sort(faces_.begin(), faces_.end());
         std::cout << "time sort = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\n";
         timer = clock();
