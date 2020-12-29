@@ -17,6 +17,8 @@ public:
     int w_, h_;
     int size;
     float *z_buffer;
+    float ** zbs;
+    
     std::vector<std::vector<float>> z_buffers; // hierarchical z_buffer
     int levels;                                // 3, 2, 1, ...
     std::vector<int> z_buffer_sizes;           // width of each z_buffer
@@ -181,25 +183,27 @@ struct Vertex2D
     float x;
     float y;
     float z;
-    bool _out; // z < min_z
     int uv;
     int norm;
 };
 struct Face2D
 {
     Vertex2D v1, v2, v3;
-    int x1, y1, x2, y2; // AABB bounding box
     std::vector<Vec3f> *norms;
     std::vector<Vec2f> *uvs;
     Bitmap *diffuse_map;
 };
 struct FaceID
 {
-    float min_z;
+    int x1, y1;
+    float z1; // bounding box
+    int x2, y2;
+    float z2; // x1 < x2, y1 < y2 , z1  < z2
+    int i, idx1, idx2, idx3, idx4;
     Face2D *f;
     bool operator<(const FaceID &a) const
     {
-        return min_z < a.min_z;
+        return z1 < a.z1;
     }
 };
 
@@ -227,7 +231,7 @@ public:
     float *obj_scale;
 
     Model *model;
-
+    std::vector<int> z_buffer_sizes;
     std::vector<Vertex2D> vertex_; // transformed
     std::vector<Vec3f> norms_;     // transformed
     std::vector<Face2D> faces_;    // clipped faces
@@ -251,9 +255,9 @@ public:
             Vec3f v = rotate_ * (model->_verts[i]) + move_; // 顶点坐标转换.
             float z = v.z / (*camera_scale);                // 全局放大.
             if (z < 0.001)
-                vertex_[i] = {0.0, 0.0, 0.0, true, 0, 0};
+                vertex_[i] = {0.0, 0.0, -1.0, 0, 0};
             else
-                vertex_[i] = {v.x / z + mx, v.y / z + my, z, false, 0, 0}; // 透视投影.
+                vertex_[i] = {v.x / z + mx, v.y / z + my, z, 0, 0}; // 透视投影.
         }
         for (int i = 0; i < norms_.size(); ++i)
         {
@@ -275,7 +279,7 @@ public:
             Vertex2D v3 = vertex_[p3.x];
 
             // 视锥剔除.
-            if (v1._out || v2._out || v3._out)
+            if (v1.z < 0 || v2.z < 0 || v3.z < 0)
                 continue;
             // 背面剔除.
             // if ((v2.x - v1.x) * (v3.y - v2.y) - (v2.y - v1.y) * (v3.x - v2.x) > 0)
@@ -288,24 +292,45 @@ public:
             int y1 = v1.y + 0.5;
             int y2 = v2.y + 0.5;
             int y3 = v3.y + 0.5;
+            float z1 = v1.z;
+            float z2 = v2.z;
+            float z3 = v3.z;
+            // bounding box
             sort3(x1, x2, x3);
             sort3(y1, y2, y3);
+            sort3(z1, z2, z3);
             // 视锥剔除.
             if (x3 < 0 || x1 >= w_ || y3 < 0 || y1 >= h_)
                 continue;
-            x1 = between(0, w_, x1);
-            x3 = between(0, w_, x3);
-            y1 = between(0, h_, y1);
-            y3 = between(0, h_, y3);
             v1.uv = p1.y;
             v1.norm = p1.z;
             v2.uv = p2.y;
             v2.norm = p2.z;
             v3.uv = p3.y;
             v3.norm = p3.z;
+            faces_.push_back({v1, v2, v3, &norms_, &model->_uv, model->_diffusemap});
 
-            faces_.push_back({v1, v2, v3, x1, y1, x3, y3, &norms_, &model->_uv, model->_diffusemap});
-            face_ids.push_back({min3(v1.z, v2.z, v3.z), &faces_.back()});
+            FaceID id = {x1, y1, z1, x2, y2, z2, 0, 0, 0, 0, 0, &faces_.back()};
+            x1 = between(0, w_ - 1, x1);
+            x3 = between(0, w_ - 1, x3);
+            y1 = between(0, h_ - 1, y1);
+            y3 = between(0, h_ - 1, y3);
+            int level = 0;
+            while (x3 - x1 > 1 || y3 - y1 > 1)
+            {
+                x1 >>= 1;
+                x3 >>= 1;
+                y1 >>= 1;
+                y3 >>= 1;
+                level++;
+            }
+            int s = z_buffer_sizes[level];
+            id.i = level;
+            id.idx1 = s * y1 + x1;
+            id.idx2 = s * y3 + x1;
+            id.idx3 = s * y1 + x3;
+            id.idx4 = s * y3 + x3;
+            face_ids.push_back(id);
         }
         std::sort(face_ids.begin(), face_ids.end());
     }
@@ -460,7 +485,7 @@ public:
         std::cout << "time push_back = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\tn_faces: " << faces_.size() << std::endl;
         timer = clock();
 
-        std::sort(faces_.begin(), faces_.end());
+        // std::sort(faces_.begin(), faces_.end());
         std::cout << "time sort = " << (double)(clock() - timer) * 1000.0 / CLOCKS_PER_SEC << " ms\n";
         timer = clock();
 
@@ -480,13 +505,16 @@ public:
         float ax, ay, ak, bx, by, bk, cx, cy, ck;
         float dx, dy;
     };
-    inline void Draw_triangle(FaceID face_id)
+    inline void Draw_triangle(FaceID &face_id)
     {
-        Face2D *ff = face_id.f;
-        if (!fb.visiable_box(ff->x1, ff->y1, ff->x2, ff->y2, face_id.min_z))
+        std::vector<float> &zb = fb.z_buffers[face_id.i];
+        if (!(face_id.z1 < zb[face_id.idx1] || face_id.z1 < zb[face_id.idx2] ||
+              face_id.z1 < zb[face_id.idx3] || face_id.z1 < zb[face_id.idx4]))
             return;
+        // if (!fb.visiable_box(ff->x1, ff->y1, ff->x2, ff->y2, face_id.min_z))
+        //     return;
         visiable_triangles += 1;
-        Face2D face = *ff;
+        Face2D face = *face_id.f;
         // sort v1, v2, v3face.
         if (face.v1.x > face.v2.x)
             std::swap(face.v1, face.v2);
@@ -635,7 +663,7 @@ public:
     }
 };
 
-RenderObj::RenderObj(Render *render, Obj *obj) : w_(render->fb.w_), h_(render->fb.h_)
+RenderObj::RenderObj(Render *render, Obj *obj) : w_(render->fb.w_), h_(render->fb.h_), z_buffer_sizes(render->fb.z_buffer_sizes)
 {
     camera = &(render->camera);
     camera_scale = &(render->camera_scale);
