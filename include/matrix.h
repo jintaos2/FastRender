@@ -1129,11 +1129,11 @@ inline T min3(T a, T b, T c)
 template <typename T>
 inline void sort3(T &a, T &b, T &c)
 {
-    if (a > b)
+    if (b < a)
         std::swap(a, b);
-    if (a > c)
+    if (c < a)
         std::swap(a, c);
-    if (b > c)
+    if (c < b)
         std::swap(b, c);
 }
 

@@ -50,14 +50,14 @@ int main()
     Obj test2(&model, {{1, 0, 0, 1}, {0, 1, 0, 0}, {0, 0, 1, -2}, {0, 0, 0, 1}}, 1);
 
     std::vector<Obj *> test_objs;
-    for (int k = 0; k < 45; ++k)
+    for (int i = 0; i < 5; ++i)
     {
-        for (int i = 0; i < 5; ++i)
+        for (int j = 0; j < 9; ++j)
         {
-            for (int j = 0; j < 9; ++j)
+            for (int k = 0; k < 45; ++k)
             {
                 Mat4x4f pose = {{1, 0, 0, (float)(j - 4)}, {0, 1, 0, (float)(i - 2)}, {0, 0, 1, (float)k * 3}, {0, 0, 0, 1}};
-                Obj *a = new Obj(&model, pose, 0.6 + 0.6 * (k + 1));
+                Obj *a = new Obj(&model, pose, 0.7 + 0.3 * (k + 1));
                 test_objs.push_back(a);
             }
         }
@@ -71,7 +71,6 @@ int main()
     {
         r.add_obj(test_objs[i]);
     }
-
     ////////////////////
     // GLFW
     ////////////////////
