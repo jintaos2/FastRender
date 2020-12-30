@@ -54,7 +54,7 @@ int main()
     {
         for (int j = 0; j < 9; ++j)
         {
-            for (int k = 0; k < 145; ++k)
+            for (int k = 0; k < 5; ++k)
             {
                 Mat4x4f pose = {{1, 0, 0, (float)(j - 4)}, {0, 1, 0, (float)(i - 2)}, {0, 0, 1, (float)k * 3}, {0, 0, 0, 1}};
                 Obj *a = new Obj(&model, pose, 0.9 + 0.1 * (k + 1));
@@ -118,7 +118,7 @@ int main()
         r.render();
         // std::cout << "===============================new frame ==========================\n";
         glPixelZoom(ZOOM, ZOOM);
-        glDrawPixels(SCR_WIDTH, SCR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, r.fb.fb_);
+        glDrawPixels(SCR_WIDTH, SCR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, r.fbs[0]->fb_);
         glfwSwapBuffers(window);
         glfwPollEvents();
         // break;
