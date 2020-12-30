@@ -478,19 +478,16 @@ public:
         {
             RenderObj *c_ = obj_renders[i];
             if (c_->Z2 < 0 || !fb.visiable_box(c_->X1, c_->Y1, c_->X2, c_->Y2, c_->Z1))
-            {
-                // std::cout << "jump: " << i << " Z1: " << c_->Z1 << " Z2: " << c_->Z2 << std::endl;
                 continue;
-            }
             for (auto j : c_->face_ids)
                 Draw_triangle(j);
             visiable_objs++;
         }
         std::cout << "time Draw = " << get_time_ms() << " ms" << std::endl;
-        std::cout << "n_faces:" << n_faces << "\tdraw_obj:" << visiable_objs
-                  << "\tdraw_triangle:" << visiable_triangles
-                  << "\tdraw_line:" << visiable_scanlines
-                  << "\tdraw_pixel:" << visiable_pixels << std::endl;
+        std::cout << "faces:" << n_faces << "\tdraw->obj:" << visiable_objs
+                  << "\triangle:" << visiable_triangles
+                  << "\tscanline:" << visiable_scanlines
+                  << "\tpixel:" << visiable_pixels << std::endl;
     }
 
     struct Face2D_Coeff
