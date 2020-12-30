@@ -218,6 +218,11 @@ struct Vertex2D
 };
 struct Face2D
 {
+    int x1, y1;
+    float z1;
+    int x2, y2; // bounding box
+    float z2;   // x1 < x2, y1 < y2 , z1  < z2
+    float *pz1, *pz2, *pz3, *pz4;
     Vertex2D v1, v2, v3;
     Bitmap *diffuse_map;
     std::vector<Vec3f> *norms;
@@ -232,14 +237,88 @@ struct FaceID
         return z1 < a.z1;
     }
 };
-struct Octree
+class Octree;
+class Octree
 {
+public:
     int x1, y1;
     float z1;
-    int x2, y2;                                    // bounding box
-    float z2;                                      // x1 < x2, y1 < y2 , z1  < z2
-    Octree *n1, *n2, *n3, *n4, *n5, *n6, *n7, *n8; // childs;
+    int x2, y2; // bounding box
+    float z2;   // x1 < x2, y1 < y2 , z1  < z2
+    union
+    {
+        struct
+        {
+            Octree *n000, *n100, *n010, *n110, *n001, *n101, *n011, *n111;
+        };
+        Octree *n[8] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    };
     std::vector<Face2D *> faces;
+    Octree(){};
+    Octree(int x1, int y1, float z1, int x2, int y2, float z2)
+        : x1(x1), y1(y1), z1(z1), x2(x2), y2(y2), z2(z2) {}
+    void new_childs(int sx, int sy, float sz)
+    {
+        n000 = new Octree(sx, sy, sz, x1, y1, z1);
+        n100 = new Octree(x2, sy, sz, sx, y1, z1);
+        n010 = new Octree(sx, y2, sz, x1, sy, z1);
+        n110 = new Octree(x2, y2, sz, sx, sy, z1);
+        n001 = new Octree(sx, sy, z2, x1, y1, sz);
+        n101 = new Octree(x2, sy, z2, sx, y1, sz);
+        n011 = new Octree(sx, y2, z2, x1, sy, sz);
+        n111 = new Octree(x2, y2, z2, sx, sy, sz);
+    }
+    inline void insert_face(Face2D *f)
+    {
+        faces.push_back(f);
+        x1 = min(f->x1, x1);
+        x2 = max(f->x2, x2);
+        y1 = min(f->y1, y1);
+        y2 = max(f->y2, y2);
+        z1 = min(f->z1, z1);
+        z2 = max(f->z2, z2);
+    }
+    inline void insert_childs_face(Face2D *f, int sx, int sy, float sz)
+    {
+        int idx1 = f->x1 < sx;
+        int idx2 = f->y1 < sy;
+        int idx3 = f->z1 < sz;
+        Octree *target = n[idx3 << 2 | idx2 << 1 | idx1];
+        target->insert_face(f);
+    }
+    void build_subtree()
+    {
+        if (faces.size() < 20)
+            return;
+        int sx = (x1 + x2) / 2;
+        int sy = (y1 + y2) / 2;
+        float sz = (z1 + z2) / 2;
+        new_childs(sx, sy, sz);
+        size_t n_faces = faces.size();
+        size_t max_child_size = 0;
+        for (auto i : faces)
+        {
+            insert_childs_face(i, sx, sy, sz);
+        }
+        faces.clear();
+        for (int i = 0; i < 8; ++i)
+            max_child_size = max(max_child_size, n[i]->faces.size());
+        if (max_child_size > n_faces / 2)
+            return;
+        for (int i = 0; i < 8; ++i)
+            n[i]->build_subtree();
+    }
+    ~Octree()
+    {
+        for (int i = 0; i < 8; ++i)
+        {
+            if (n[i])
+            {
+                delete n[i];
+                n[i] = NULL;
+            }
+        }
+    }
 };
 
 struct Obj
@@ -267,7 +346,7 @@ public:
     std::vector<float *> z_buffers;
     std::vector<Vec3f> norms_;  // transformed
     std::vector<Face2D> faces_; // clipped faces
-    std::vector<FaceID> face_ids;
+    Octree *oct;
 
     RenderObj(Render *render, Obj *obj);
 
@@ -275,7 +354,8 @@ public:
     {
         // initial state
         faces_.clear();
-        face_ids.clear();
+        delete oct;
+        oct = new Octree();
         X1 = w_ - 1;
         X2 = 0;
         Y1 = h_ - 1;
@@ -340,14 +420,10 @@ public:
             // 背面剔除.
             // if ((x2f - x1f) * (y3f - y2f) - (y2f - y1f) * (x3f - x2f) >= 0)
             //     continue;
-            Face2D ff = {{x1f, y1f, z1, uvs[p1.y], p1.z},
-                         {x2f, y2f, z2, uvs[p2.y], p2.z},
-                         {x3f, y3f, z3, uvs[p3.y], p3.z},
-                         p_diffusemap,
-                         p_norms};
-            sort3(ff.v1, ff.v2, ff.v3); // for bresenham
-            faces_.push_back(ff);
-            // push 之后.
+            Vertex2D v1 = {x1f, y1f, z1, uvs[p1.y], p1.z};
+            Vertex2D v2 = {x2f, y2f, z2, uvs[p2.y], p2.z};
+            Vertex2D v3 = {x3f, y3f, z3, uvs[p3.y], p3.z};
+            sort3(v1, v2, v3);
             sort3(z1, z3, z2);
             // hierarchical z_buffer.
             x1 = between(0, w_ - 1, x1);
@@ -361,6 +437,10 @@ public:
             Y2 = max(Y2, y2);
             Z1 = min(Z1, z1);
             Z2 = max(Z2, z2);
+            int xx1 = x1;
+            int xx2 = x2;
+            int yy1 = y1;
+            int yy2 = y2;
             int level = 0;
             while (x2 - x1 > 1 || y2 - y1 > 1)
             {
@@ -376,9 +456,17 @@ public:
             float *pz2 = pz + s * y1 + x2;
             float *pz3 = pz + s * y2 + x1;
             float *pz4 = pz + s * y2 + x2;
-            face_ids.push_back({z1, pz1, pz2, pz3, pz4, &faces_.back()});
+            faces_.push_back({xx1, yy1, z1, xx2, yy1, z2,
+                              pz1, pz2, pz3, pz4, v1, v2, v3, p_diffusemap, p_norms});
+            oct->faces.push_back(&faces_.back());
         }
-        std::sort(face_ids.begin(), face_ids.end());
+        oct->x1 = X1;
+        oct->y1 = Y1;
+        oct->z1 = Z1;
+        oct->x2 = X2;
+        oct->y2 = Y2;
+        oct->z2 = Z2;
+        oct->build_subtree();
     }
 };
 
@@ -477,14 +565,9 @@ public:
         for (int i = 0; i < N; ++i)
         {
             RenderObj *c_ = obj_renders[i];
-            if (c_->Z2 < 0 || !fb.visiable_box(c_->X1, c_->Y1, c_->X2, c_->Y2, c_->Z1))
-            {
-                // std::cout << "jump: " << i << " Z1: " << c_->Z1 << " Z2: " << c_->Z2 << std::endl;
+            if (c_->Z2 < 0)
                 continue;
-            }
-            for (auto j : c_->face_ids)
-                Draw_triangle(j);
-            visiable_objs++;
+            Draw_tree(c_->oct);
         }
         std::cout << "time Draw = " << get_time_ms() << " ms" << std::endl;
         std::cout << "n_faces:" << n_faces << "\tdraw_obj:" << visiable_objs
@@ -498,14 +581,28 @@ public:
         float ax, ay, ak, bx, by, bk, cx, cy, ck;
         float dx, dy;
     };
-    inline void Draw_triangle(FaceID &face_id)
+    inline void Draw_tree(Octree *a)
+    {
+        if (!fb.visiable_box(a->x1, a->y1, a->x2, a->y2, a->z1))
+            return;
+        if (a->n000 != NULL)
+        {
+            for (int i = 0; i < 8; ++i)
+                Draw_tree(a->n[i]);
+        }
+        else
+        {
+            for (auto i : a->faces)
+                Draw_triangle(*i);
+        }
+    }
+    inline void Draw_triangle(Face2D &face)
     {
         // 片元剔除.
-        float min_z = face_id.z1;
-        if ((min_z < *face_id.pz1 || min_z < *face_id.pz2 ||
-             min_z < *face_id.pz3 || min_z < *face_id.pz4))
+        float min_z = face.z1;
+        if ((min_z < *face.pz1 || min_z < *face.pz2 ||
+             min_z < *face.pz3 || min_z < *face.pz4))
         {
-            Face2D face = *face_id.f;
             float x1f = face.v1.x;
             float x2f = face.v2.x;
             float x3f = face.v3.x;
@@ -724,7 +821,6 @@ RenderObj::RenderObj(Render *render, Obj *obj) : w_(render->fb.w_),
 
     norms_.resize(model->_norms.size());
     faces_.reserve(model->_faces.size());
-    face_ids.reserve(model->_faces.size());
 }
 
 #endif
