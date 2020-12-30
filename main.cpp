@@ -54,10 +54,10 @@ int main()
     {
         for (int j = 0; j < 9; ++j)
         {
-            for (int k = 0; k < 45; ++k)
+            for (int k = 0; k < 145; ++k)
             {
                 Mat4x4f pose = {{1, 0, 0, (float)(j - 4)}, {0, 1, 0, (float)(i - 2)}, {0, 0, 1, (float)k * 3}, {0, 0, 0, 1}};
-                Obj *a = new Obj(&model, pose, 0.7 + 0.3 * (k + 1));
+                Obj *a = new Obj(&model, pose, 0.9 + 0.1 * (k + 1));
                 test_objs.push_back(a);
             }
         }
