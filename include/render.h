@@ -567,13 +567,14 @@ public:
             RenderObj *c_ = obj_renders[i];
             if (c_->Z2 < 0)
                 continue;
+            visiable_objs++;
             Draw_tree(c_->oct);
         }
         std::cout << "time Draw = " << get_time_ms() << " ms" << std::endl;
-        std::cout << "n_faces:" << n_faces << "\tdraw_obj:" << visiable_objs
-                  << "\tdraw_triangle:" << visiable_triangles
-                  << "\tdraw_line:" << visiable_scanlines
-                  << "\tdraw_pixel:" << visiable_pixels << std::endl;
+        std::cout << ">> n_faces:" << n_faces << "\t|obj:" << visiable_objs
+                  << "\t|triangle:" << visiable_triangles
+                  << "\t|line:" << visiable_scanlines
+                  << "\t|pixel:" << visiable_pixels << std::endl;
     }
 
     struct Face2D_Coeff
