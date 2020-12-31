@@ -484,10 +484,10 @@ public:
             visiable_objs++;
         }
         std::cout << "time Draw = " << get_time_ms() << " ms" << std::endl;
-        std::cout << "faces:" << n_faces << "\tdraw->obj:" << visiable_objs
-                  << "\triangle:" << visiable_triangles
-                  << "\tscanline:" << visiable_scanlines
-                  << "\tpixel:" << visiable_pixels << std::endl;
+        std::cout << ">> faces:" << n_faces << "\t|obj:" << visiable_objs
+                  << "\t|tiangle:" << visiable_triangles
+                  << "\t|scanline:" << visiable_scanlines
+                  << "\t|pixel:" << visiable_pixels << std::endl;
     }
 
     struct Face2D_Coeff
