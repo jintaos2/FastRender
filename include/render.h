@@ -52,7 +52,7 @@ public:
     }
     inline bool invisiable(int x, int y, float z)
     {
-        return z >= z_buffer0[y * w_ + x];
+        return z > z_buffer0[y * w_ + x];
     }
 };
 
@@ -209,7 +209,7 @@ public:
 
     Render(int w, int h) : fb(FrameBuffer(w, h))
     {
-        n_threads = omp_get_max_threads() / 2;
+        n_threads = 10; // omp_get_max_threads() / 4;
         for (int i = 0; i < n_threads; ++i)
         {
             fbs.push_back(new FrameBuffer(w, h));
@@ -288,8 +288,7 @@ public:
         int N = obj_renders.size();
         int n_obj = (N - 1) / n_threads + 1;
 
-        omp_set_num_threads(n_threads);
-#pragma omp parallel for
+        #pragma omp parallel for
         for (int i = 0; i < N; ++i)
         {
             obj_renders[i]->clip_faces();
@@ -305,7 +304,8 @@ public:
 #pragma omp parallel
         {
             int thread_id = omp_get_thread_num();
-            fbs[thread_id]->fill(color);
+            FrameBuffer *fb_ = fbs[thread_id];
+            fb_->fill(color);
             int n_start = thread_id * n_obj;
             int n_end = min(N, n_start + n_obj);
             if (n_end > n_start)
@@ -314,7 +314,7 @@ public:
             for (int i = n_start; i < n_end; ++i)
             {
                 for (auto f : obj_renders[i]->face_ids)
-                    Draw_triangle(f, fbs[thread_id]);
+                    Draw_triangle(f, fb_);
             }
         }
         std::cout << "time Draw = " << get_time_ms() << " ms\n";
@@ -367,10 +367,10 @@ public:
         int y3 = y3f + 0.5;
 
         int c = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1); // up, down, line
-        visiable_triangles += 1;
 
         if (c == 0)
             return;
+        // visiable_triangles += 1;
         float coeff1 = (y2f - y3f) * (x1f - x3f) + (x3f - x2f) * (y1f - y3f);
         float dz23 = (z2 - z3) / coeff1;
         float dz12 = (face.v1.z - z2) / coeff1;
@@ -423,7 +423,7 @@ public:
     {
         if (x < 0 || x >= fb.w_ || y2 < 0 || y1 >= fb.h_)
             return;
-        visiable_scanlines += 1;
+        // visiable_scanlines += 1;
         y1 = between(0, fb.h_ - 1, y1);
         y2 = between(0, fb.h_ - 1, y2);
 
@@ -435,7 +435,7 @@ public:
             // 像素剔除.
             if (fb_->invisiable(x, y, z_))
                 continue;
-            visiable_pixels += 1;
+            // visiable_pixels += 1;
             float frac1 = f.ax * x + f.ay * y + f.ak;
             float frac2 = f.bx * x + f.by * y + f.bk;
             float frac3 = f.cx * x + f.cy * y + f.ck;
@@ -444,7 +444,7 @@ public:
             Vec2f &uv3 = face.v3.uv;
             float uv_x = (frac1 * uv1.x + frac2 * uv2.x + frac3 * uv3.x) * z_;
             float uv_y = (frac1 * uv1.y + frac2 * uv2.y + frac3 * uv3.y) * z_;
-            fb_->set_pixel(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x, uv_y));
+            fb_->set_pixel(x, y, z_, face.diffuse_map->Sample2D_easy(uv_x,uv_y));
         }
     }
 
