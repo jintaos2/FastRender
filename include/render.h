@@ -166,8 +166,8 @@ public:
             float y2 = v32.y / z2 + my;
             float y3 = v33.y / z3 + my;
             // 背面剔除.
-            if ((x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2) >= 0)
-                continue;
+            // if ((x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2) >= 0)
+            //     continue;
             Face2D ff = {{x1, y1, z1, uvs[p1.y], p1.z},
                          {x2, y2, z2, uvs[p2.y], p2.z},
                          {x3, y3, z3, uvs[p3.y], p3.z},
@@ -209,7 +209,7 @@ public:
 
     Render(int w, int h) : fb(FrameBuffer(w, h))
     {
-        n_threads = 10; // omp_get_max_threads() / 4;
+        n_threads = omp_get_max_threads()-2;
         for (int i = 0; i < n_threads; ++i)
         {
             fbs.push_back(new FrameBuffer(w, h));
