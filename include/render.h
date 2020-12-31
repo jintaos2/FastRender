@@ -16,14 +16,12 @@ class FrameBuffer
 public:
     uint32_t *fb_;
     float *z_buffer0;
-    uint32_t *vaild;
     int w_, h_;
     FrameBuffer() {}
     FrameBuffer(int w, int h) : w_(w), h_(h)
     {
         fb_ = new uint32_t[w * h];
         z_buffer0 = new float[w * h];
-        vaild = new uint32_t[w * h];
     }
     ~FrameBuffer()
     {
@@ -37,31 +35,24 @@ public:
             delete[] z_buffer0;
             z_buffer0 = NULL;
         }
-        if (vaild)
-        {
-            delete[] vaild;
-            vaild = NULL;
-        }
     }
     inline void fill(uint32_t color)
     {
         for (int i = 0; i < w_ * h_; ++i)
         {
             fb_[i] = color;
-            vaild[i] = 0; // z_buffer invaild
+            z_buffer0[i] = FLT_MAX;
         }
     }
     inline void set_pixel(int x, int y, float z, uint32_t color)
     {
         int idx = y * w_ + x;
-        vaild[idx] = 0xffffffff; // z_buffer vaild
         z_buffer0[idx] = z;
         fb_[idx] = color;
     }
     inline bool invisiable(int x, int y, float z)
     {
-        int idx = y * w_ + x;
-        return ((z >= z_buffer0[idx]) && vaild[idx]);
+        return z >= z_buffer0[y * w_ + x];
     }
 };
 
@@ -212,14 +203,13 @@ public:
     int n_threads;
     // performance counter
     clock_t timer;
-    int visiable_objs;
     int visiable_triangles;
     int visiable_scanlines;
     int visiable_pixels;
 
     Render(int w, int h) : fb(FrameBuffer(w, h))
     {
-        n_threads = omp_get_max_threads();
+        n_threads = omp_get_max_threads() / 2;
         for (int i = 0; i < n_threads; ++i)
         {
             fbs.push_back(new FrameBuffer(w, h));
@@ -230,6 +220,10 @@ public:
         for (auto i : obj_renders)
             delete i;
         obj_renders.clear();
+        for (int i = 0; i < n_threads; ++i)
+        {
+            delete fbs[i];
+        }
     }
     void set_camera(Mat4x4f c, float scale)
     {
@@ -277,12 +271,15 @@ public:
         timer = clock();
         return ret;
     }
-    void render()
+    uint32_t *get_framebuffer()
     {
-        std::cout << "=================================== new frame =====\n";
+        return fb.fb_;
+    }
+    void render(uint32_t color)
+    {
+        std::cout << "======================== new frame =================\n";
 
         timer = clock();
-        visiable_objs = 0;
         visiable_triangles = 0;
         visiable_scanlines = 0;
         visiable_pixels = 0;
@@ -291,8 +288,8 @@ public:
         int N = obj_renders.size();
         int n_obj = (N - 1) / n_threads + 1;
 
-        // omp_set_num_threads(n_threads);
-#pragma omp parallel for num_threads(6)
+        omp_set_num_threads(n_threads);
+#pragma omp parallel for
         for (int i = 0; i < N; ++i)
         {
             obj_renders[i]->clip_faces();
@@ -308,19 +305,42 @@ public:
 #pragma omp parallel
         {
             int thread_id = omp_get_thread_num();
+            fbs[thread_id]->fill(color);
             int n_start = thread_id * n_obj;
             int n_end = min(N, n_start + n_obj);
+            if (n_end > n_start)
+                std::sort(std::begin(obj_renders) + n_start, std::begin(obj_renders) + n_end - 1,
+                          [](RenderObj *a, RenderObj *b) -> bool { return a->Z1 < b->Z1; });
             for (int i = n_start; i < n_end; ++i)
             {
                 for (auto f : obj_renders[i]->face_ids)
                     Draw_triangle(f, fbs[thread_id]);
             }
         }
-        std::cout << "time Draw = " << get_time_ms() << " ms" << std::endl;
-        std::cout << "faces:" << n_faces << "\tdraw->obj:" << visiable_objs
-                  << "\triangle:" << visiable_triangles
-                  << "\tscanline:" << visiable_scanlines
-                  << "\tpixel:" << visiable_pixels << std::endl;
+        std::cout << "time Draw = " << get_time_ms() << " ms\n";
+        omp_set_num_threads(n_threads);
+#pragma omp parallel for //num_threads(6)
+        for (int i = 0; i < fb.w_ * fb.h_; ++i)
+        {
+            float min_z = FLT_MAX;
+            uint32_t min_color = color;
+            for (int j = 0; j < n_threads; ++j)
+            {
+                float curr_z = fbs[j]->z_buffer0[i];
+                uint32_t curr_color = fbs[j]->fb_[i];
+                if (curr_z < min_z)
+                {
+                    min_z = curr_z;
+                    min_color = curr_color;
+                }
+            }
+            fb.fb_[i] = min_color;
+        }
+        std::cout << "time Merge = " << get_time_ms() << " ms\n";
+        std::cout << ">> faces:" << n_faces
+                  << "\t|tiangle:" << visiable_triangles
+                  << "\t|scanline:" << visiable_scanlines
+                  << "\t|pixel:" << visiable_pixels << std::endl;
     }
 
     struct Face2D_Coeff
