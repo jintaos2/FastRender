@@ -99,7 +99,6 @@ int main()
         else if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
             r.rotate_camera_left(-0.05);
 
-        r.fb.fill(0xffffffff);
         test1.coordinate = test1.coordinate * matrix_set_rotate(0, 1, 0, 0.05);
         test2.coordinate = test2.coordinate * matrix_set_rotate(0, 1, 0, -0.05);
         test3.coordinate = test3.coordinate * matrix_set_rotate(1, 0, 1, -0.08);
@@ -108,7 +107,7 @@ int main()
         {
             test_objs[i]->coordinate = test_objs[i]->coordinate * matrix_set_rotate(i, 1, -i, 0.05 - i / 300.0);
         }
-        r.render();
+        r.render(0xffffffff);
         std::cout << ">> FPS:";
         if (count_FPS == 10)
         {
@@ -118,7 +117,7 @@ int main()
         }
         std::cout << " \n";
         glPixelZoom(ZOOM, ZOOM);
-        glDrawPixels(SCR_WIDTH, SCR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, r.fb.fb_);
+        glDrawPixels(SCR_WIDTH, SCR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, r.get_framebuffer());
         glfwSwapBuffers(window);
         glfwPollEvents();
         // break;
