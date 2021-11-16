@@ -6,8 +6,24 @@
 <img src="./images/2-bre.gif" style="max-width: 60%;margin-left:20%;box-shadow:0 0 0px;">
 
 
-每一步 $d=d+k$, 
-if $d\ge 0.5$ then $d=d-1$, $y = y+1$
+每一步 
+
+$$
+d=d+k
+$$
+
+if 
+
+$$
+d\ge 0.5
+$$ 
+
+then 
+
+$$
+d=d-1 \\
+y = y+1
+$$
 
 ```c
 function line(x0, y0, x1, y1)
@@ -27,11 +43,21 @@ function line(x0, y0, x1, y1)
 
 #### 改进1
 
-设 $$e=2d-1$$
+设 
 
-$$e = e + 2k$$
+$$
+e=2d-1
+$$
 
-if $e \ge 0$ then $e = e - 2, y = y+1$
+$$
+e = e + 2k
+$$
+
+if 
+
+$$
+e \ge 0
+$$ then $e = e - 2, y = y+1$
 
 ```py
 x,y = x1,y1
