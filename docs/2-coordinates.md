@@ -1,4 +1,4 @@
-##  barycentric coordinates
+#  barycentric coordinates
 
 重心坐标系
 
@@ -33,7 +33,7 @@ $$
 
 <hr>
 
-### x, y 方向 $\Delta z$
+## x, y 方向 delta_z
  
 $$
 dx = \frac{(y_1-y_2)(z_2-z_3)-(y_2-y_3)(z_1-z_2)}{(x_2-x_3)(y_1-y_2)-(x_1-x_2)(y_2-y_3)} = \frac{(y_2-y_1)(z_2-z_3)+(y_2-y_3)(z_1-z_2)}{(y_2-y_3)(x_1-x_3)+(x_3-x_2)(y_1-y_3)} \\
