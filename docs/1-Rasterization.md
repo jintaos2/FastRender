@@ -41,7 +41,7 @@ function line(x0, y0, x1, y1)
 ```
 
 
-#### 改进1
+### 改进1
 
 设 
 
@@ -57,7 +57,14 @@ if
 
 $$
 e \ge 0
-$$ then $e = e - 2, y = y+1$
+$$ 
+
+then 
+
+$$
+e = e - 2 \\
+y = y+1
+$$
 
 ```py
 x,y = x1,y1
@@ -73,9 +80,15 @@ for i in range(dx):
 	x += 1
 ```
 
-#### 改进2
+### 改进2
 
-$e \to e\times \Delta x$ 其中 $\Delta x$ 是起点和终点水平距离 那么 $e$ 变成了整数
+$$
+e \to e\times \Delta x
+$$ 
+其中 
+$$
+\Delta x
+$$ 是起点和终点水平距离 那么 e 变成了整数
 
 ```c
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
