@@ -1,5 +1,5 @@
 
-#### Bresenham算法
+## Bresenham算法
 
 考虑斜率 $k<1$
 
@@ -25,11 +25,11 @@ function line(x0, y0, x1, y1)
 ```
 
 
-##### 改进1
+#### 改进1
 
-设 $e=2d-1$
+设 $$e=2d-1$$
 
-$e = e + 2k$
+$$e = e + 2k$$
 
 if $e \ge 0$ then $e = e - 2, y = y+1$
 
@@ -47,7 +47,7 @@ for i in range(dx):
 	x += 1
 ```
 
-##### 改进2
+#### 改进2
 
 $e \to e\times \Delta x$ 其中 $\Delta x$ 是起点和终点水平距离 那么 $e$ 变成了整数
 
